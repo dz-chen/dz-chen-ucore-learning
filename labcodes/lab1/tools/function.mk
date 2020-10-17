@@ -1,4 +1,3 @@
-
 OBJPREFIX	:= __objs_
 
 .SECONDEXPANSION:
@@ -6,7 +5,7 @@ OBJPREFIX	:= __objs_
 
 # list all files in some directories: (#directories, #types)
 listf = $(filter $(if $(2),$(addprefix %.,$(2)),%),\
-		  $(wildcard $(addsuffix $(SLASH)*,$(1))))
+		  $(wildcard $(addsuffix $(SLASH)*,$(1))))				# SLASH定义在Makefile文件中
 
 # get .o obj files: (#files[, packet])
 toobj = $(addprefix $(OBJDIR)$(SLASH)$(if $(2),$(2)$(SLASH)),\
@@ -15,22 +14,25 @@ toobj = $(addprefix $(OBJDIR)$(SLASH)$(if $(2),$(2)$(SLASH)),\
 # get .d dependency files: (#files[, packet])
 todep = $(patsubst %.o,%.d,$(call toobj,$(1),$(2)))
 
-totarget = $(addprefix $(BINDIR)$(SLASH),$(1))
+# BINDIR、SLASH定义在Makefile文件 =>返回目标的路径:bin/$(1)
+totarget = $(addprefix $(BINDIR)$(SLASH),$(1))  
 
 # change $(name) to $(OBJPREFIX)$(name): (#names)
+# 如果传入了参数,则给传入的参数添加前缀 __objs_; 否则直接使用该前缀
 packetname = $(if $(1),$(addprefix $(OBJPREFIX),$(1)),$(OBJPREFIX))
 
 # cc compile template, generate rule for dep, obj: (file, cc[, flags, dir])
+# 不太好懂,大概是完成编译,$(1)是文件名; $$ $$$$这这里代表什么 ?????
 define cc_template
 $$(call todep,$(1),$(4)): $(1) | $$$$(dir $$$$@)
-	@$(2) -I$$(dir $(1)) $(3) -MM $$< -MT "$$(patsubst %.d,%.o,$$@) $$@"> $$@
+	$(V)$(2) -I$$(dir $(1)) $(3) -MM $$< -MT "$$(patsubst %.d,%.o,$$@) $$@"> $$@
 $$(call toobj,$(1),$(4)): $(1) | $$$$(dir $$$$@)
 	@echo + cc $$<
 	$(V)$(2) -I$$(dir $(1)) $(3) -c $$< -o $$@
 ALLOBJS += $$(call toobj,$(1),$(4))
 endef
 
-# compile file: (#files, cc[, flags, dir])
+# compile file: (#files, cc[, flags, dir]) => 为什么下面要用$$,如何看出是shell变量???
 define do_cc_compile
 $$(foreach f,$(1),$$(eval $$(call cc_template,$$(f),$(2),$(3),$(4))))
 endef
@@ -76,8 +78,8 @@ $$(sort $$(dir $$(ALLOBJS)) $(BINDIR)$(SLASH) $(OBJDIR)$(SLASH)):
 endef
 
 # --------------------  function end  --------------------
-# compile file: (#files, cc[, flags, dir])
-cc_compile = $(eval $(call do_cc_compile,$(1),$(2),$(3),$(4)))
+# compile file: (#files, cc[, flags, dir]) => 调用cc_compile是传入的参数直接传递给do_cc_compile
+cc_compile = $(eval $(call do_cc_compile,$(1),$(2),$(3),$(4))) #$(1)文件, $(2)编译器,$(3)编译参数
 
 # add files to packet: (#files, cc[, flags, packet, dir])
 add_files = $(eval $(call do_add_files_to_packet,$(1),$(2),$(3),$(4),$(5)))

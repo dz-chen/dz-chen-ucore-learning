@@ -310,6 +310,17 @@ log: $(UCOREIMG)
 qemu-nox: $(UCOREIMG)
 	$(V)$(QEMU)   -no-reboot -serial mon:stdio -hda $< -nographic
 TERMINAL        :=gnome-terminal
+
+######## make debug => 调试
+#	与make qumu的区别在于使用这个选项,qemu不会在gdb尚未连接时擅自运行,即一开始qemu就处于等待模式
+# line1:目标及其依赖
+# line2:qemu-system-i386 -S -s -parallel stdio -hda bin/ucore.img -serial null &
+#		-S:在启动时不启动cpu,需要在monitor中输入c才能工作; -s:等待gdb连接到端口1234; 
+#		-parallel dev:重定向虚拟并口到主机设备dev中; -hda file:使用file作为硬盘0的镜像
+#		-serial dev:重定向虚拟串口到主机设备dev中 
+# line3:sleep 2
+# line4:gnome-terminal -e "gdb -q -tui -x tools/gdbinit" => 新开一个gnome终端并执行命令...
+#		-q(--quiet):启动时不打印版本信息; -tui:专门为gdb启动一个用户终端;  -x指定读取配置文件gdbinit
 debug: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
 	$(V)sleep 2

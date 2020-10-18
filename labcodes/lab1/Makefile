@@ -242,7 +242,8 @@ bootblock = $(call totarget,bootblock)
 #		其中,-N表示指定读取/写入文本和数据段; -e start使用符号start作为程序的初始执行点; -Ttext 0x7C00指定文本段的起始地址为ox7c00
 # line5:执行命令:objdump -S obj/bootblock.o > obj/bootblock.asm
 # line6:执行命令:objcopy -S -O binary obj/bootblock.o obj/bootblock.out => 即复制二进制文件
-# line7:执行命令:bin/sign   obj/bootblock.out bin/bootblock => 从而生成目标文件bootblock
+# line7:执行命令:bin/sign   obj/bootblock.out bin/bootblock
+# 		执行sign的作用,将加载程序bootblock.out填充至512bytes以符号MBR格式
 $(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	$(warning ************************************** 即将生成bootblock目标 )
 	@echo + ld $@

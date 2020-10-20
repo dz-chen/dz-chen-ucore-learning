@@ -217,6 +217,7 @@ qemu-nox: $(UCOREIMG)
 TERMINAL        :=gnome-terminal
 gdb: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null
+	
 debug: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
 	$(V)sleep 2

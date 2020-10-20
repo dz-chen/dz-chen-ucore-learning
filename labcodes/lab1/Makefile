@@ -322,7 +322,7 @@ TERMINAL        :=gnome-terminal
 # line4:gnome-terminal -e "gdb -q -tui -x tools/gdbinit" => 新开一个gnome终端并执行命令...
 #		-q(--quiet):启动时不打印版本信息; -tui:专门为gdb启动一个用户终端;  -x指定读取配置文件gdbinit
 debug: $(UCOREIMG)
-	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
+	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null -d in_asm -D  bootasm.s &
 	$(V)sleep 2
 	$(V)$(TERMINAL) -e "gdb -q -tui -x tools/gdbinit"
 	

@@ -317,12 +317,13 @@ TERMINAL        :=gnome-terminal
 # line2:qemu-system-i386 -S -s -parallel stdio -hda bin/ucore.img -serial null &
 #		-S:在启动时不启动cpu,需要在monitor中输入c才能工作; -s:等待gdb连接到端口1234; 
 #		-parallel dev:重定向虚拟并口到主机设备dev中; -hda file:使用file作为硬盘0的镜像
-#		-serial dev:重定向虚拟串口到主机设备dev中 
+#		-serial dev:重定向虚拟串口到主机设备dev中
+#		-d in_asm -D  bootasm.s 将qemu执行的所有指令输出到指定文件 
 # line3:sleep 2
 # line4:gnome-terminal -e "gdb -q -tui -x tools/gdbinit" => 新开一个gnome终端并执行命令...
 #		-q(--quiet):启动时不打印版本信息; -tui:专门为gdb启动一个用户终端;  -x指定读取配置文件gdbinit
 debug: $(UCOREIMG)
-	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null -d in_asm -D  bootasm.s &
+	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
 	$(V)sleep 2
 	$(V)$(TERMINAL) -e "gdb -q -tui -x tools/gdbinit"
 	

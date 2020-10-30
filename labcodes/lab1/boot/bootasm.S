@@ -2,7 +2,7 @@
 
 # ######################################### bootloader源码 ##########################################
 # .BIOS加载bootloader后,控制跳转到这里(bootasm.S),此段代码在物理内存的起始地址就是0x7c00
-# .然后由这段汇编再去调用C源码
+# .然后由这段汇编再去调用bootloader的C源码=> call bootmain
 #  => 作用:
 # 1.开启地址线A20
 # 2.开启保护模式
@@ -26,13 +26,18 @@
 
 
 # ########################################## 设置堆栈指针代码解读
-# movl $0x0, %ebp         # 栈帧基址(不是栈底!!!) => 可见这里栈是往上长的
+# movl $0x0, %ebp         # 栈帧基址(不是栈底!!!) => 可见这里栈是往上长的??
 # movl $start, %esp       # 栈顶 start==0x7c00
 # call bootmain
 # 为什么栈顶是 start ??????? 栈帧基址不应该是0x7c00吗 ????
 
 # ########################################## 初始化段描述符表代码解读
+# ..... 见gtd 部分以及 asm.h
 
+
+# ########################################## 初始化段描述符表寄存器内容的代码解读
+# .word 0x17                                      # sizeof(gdt) - 1 => 设置GDT的长度, .word伪指令:在当前位置放置一个16bit的字...
+# .long gdt                                       # address gdt     => 设置GDT的基址, .long伪指令:.....
 
 
 
@@ -132,15 +137,20 @@ spin:
 .p2align 2                                          # force 4 byte alignment
 
 
-# 定义全局描述符表,SEG_NULLASM、SEG_ASM来自asm.h
-# 每个表项/段描述符占8个字节
+# 定义全局描述符表,SEG_NULLASM、SEG_ASM两个宏来自asm.h
+# 每个表项/段描述符占8个字节 => 64位
+# 段描述符格式:https://chyyuu.gitbooks.io/ucore_os_docs/content/lab1_figs/image003.png
+# 基址32位; 限长20位; 属性... ; 注意基址、限长的bit不是连续的!!!
+# SEG_ASM(type,base,lim)
 gdt:
     SEG_NULLASM                                     # null seg  => 第一个段描述符设定为空段描述符
     SEG_ASM(STA_X|STA_R, 0x0, 0xffffffff)           # code seg for bootloader and kernel
     SEG_ASM(STA_W, 0x0, 0xffffffff)                 # data seg for bootloader and kernel
 
 
-# 描述全局描述符表的描述符 => 实际上它就是GDTR的内容 ??
+# 描述全局描述符表的描述符 => 实际上它就是GDTR的内容 
+#   .word 0x17  #写入段描述符表的长度 => 为什么是23而不是24? 因为按照地址算是gdt+0,gdt+1,....gdt+23,正好是24字节
+#   .long gdt   #写入段描述符表gdt的地址
 gdtdesc:
-    .word 0x17                                      # sizeof(gdt) - 1
-    .long gdt                                       # address gdt
+    .word 0x17                                      # sizeof(gdt) - 1 => .word伪指令:在当前位置放置一个16bit的字...
+    .long gdt                                       # address gdt     => .long伪指令:.....

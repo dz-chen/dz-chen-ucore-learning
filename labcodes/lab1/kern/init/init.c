@@ -9,23 +9,29 @@
 #include <intr.h>
 #include <pmm.h>
 #include <kmonitor.h>
-int kern_init(void) __attribute__((noreturn));
+int kern_init(void) __attribute__((noreturn));    //__attribute__用于声明函数属性
 void grade_backtrace(void);
 static void lab1_switch_test(void);
 
-int
-kern_init(void) {
-    extern char edata[], end[];
+/***  操作系统的初始化 => 可参考:lab1实验指导书,"操作系统启动过程" ***/
+
+// 这部分涉及的内容较多,暂时没有看完所有相关细节!!!
+// ........................
+
+int kern_init(void) {
+    extern char edata[], end[];                 //extern表示该变量是一个已经定义的外部变量
     memset(edata, 0, end - edata);
 
+    // 1.初始化终端
     cons_init();                // init the console
 
+    // 2.显示字符串
     const char *message = "(THU.CST) os is loading ...";
-    cprintf("%s\n\n", message);
+    cprintf("%s\n\n", message); //cprintf:送格式化输出至屏幕,见../libs/stdio.c
 
-    print_kerninfo();
+    print_kerninfo();           // 打印内核信息,见../debug/kdebug.c               
 
-    grade_backtrace();
+    grade_backtrace();          // ???
 
     pmm_init();                 // init physical memory management
 

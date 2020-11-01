@@ -156,6 +156,7 @@ void bootmain(void) {
     // call the entry point from the ELF header
     // note: does not return
     // e_entry:程序入口的虚拟地址; 注意不返回,直接调用OS的代码开始运行....
+    // => 调用的函数为:kern/init/init.c中的kern_init
     ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
 
 bad:

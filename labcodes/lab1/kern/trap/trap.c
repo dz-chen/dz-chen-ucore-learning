@@ -20,13 +20,14 @@ static void print_ticks() {
 }
 
 /* *
- * Interrupt descriptor table:
- *
+ * Interrupt descriptor table: 中断描述符表/中断向量表
+ * => 定义见kern/mm/mmu.h
  * Must be built at run time because shifted function addresses can't
  * be represented in relocation records.
  * */
 static struct gatedesc idt[256] = {{0}};
 
+// idtr寄存器中将会存放的内容,包括idt的限长和基址
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
 };
@@ -46,6 +47,25 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+
+    // 1.声明中断服务例程的入口地址(不是描述符表!!),它定义在vetors.S中 => .globl __vectors(见./vectors.S,由tools/vectors.c生成)
+    extern uintptr_t __vectors[];      // uintptr_t即unsigned int => 其中每个元素,就是一个中断服务例程的入口地址
+
+    // 2.填充IDT
+    // 2.1 ... 如何解释段选择子、istrap这样设置的原因??
+    for(size_t i=0;i<256;i++){
+        int istrap=0;                   // 是否陷阱 => 否,会关中断; 但是区别不大,也可不这样设置
+        int sel=GD_KTEXT;               // 段选择子;
+        int off=__vectors[i];           // 存储的基址在代码段中的偏移; 段偏移与eip对应
+        int dpl=DPL_KERNEL;             // 系统调用中断T_SYSCALL使用特权级为3,其他全为0
+        SETGATE(idt[i],istrap,sel,off,dpl);         // 宏,见mmu.h
+    }
+    // 2.2 处理存在特权级切换的特殊情况,这里选择中断号121系统调用
+    // 系统调用的权限仅为用户权限,理由 ??
+    SETGATE(idt[T_SWITCH_TOK],0,GD_KTEXT,__vectors[T_SWITCH_TOK],DPL_USER);
+
+    // 3.加载idt的地址到idtr; 从idt_pd处加载
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -140,37 +160,42 @@ trap_dispatch(struct trapframe *tf) {
     char c;
 
     switch (tf->tf_trapno) {
-    case IRQ_OFFSET + IRQ_TIMER:
-        /* LAB1 YOUR CODE : STEP 3 */
-        /* handle the timer interrupt */
-        /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
-         * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
-         * (3) Too Simple? Yes, I think so!
-         */
-        break;
-    case IRQ_OFFSET + IRQ_COM1:
-        c = cons_getc();
-        cprintf("serial [%03d] %c\n", c, c);
-        break;
-    case IRQ_OFFSET + IRQ_KBD:
-        c = cons_getc();
-        cprintf("kbd [%03d] %c\n", c, c);
-        break;
-    //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
-    case T_SWITCH_TOU:
-    case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
-        break;
-    case IRQ_OFFSET + IRQ_IDE1:
-    case IRQ_OFFSET + IRQ_IDE2:
-        /* do nothing */
-        break;
-    default:
-        // in kernel, it must be a mistake
-        if ((tf->tf_cs & 3) == 0) {
-            print_trapframe(tf);
-            panic("unexpected trap in kernel.\n");
-        }
+        case IRQ_OFFSET + IRQ_TIMER:            //时钟中断
+            /* LAB1 YOUR CODE : STEP 3 */
+            /* handle the timer interrupt */
+            /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
+            * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
+            * (3) Too Simple? Yes, I think so!
+            */
+            ticks++;
+            if(ticks % TICK_NUM ==0){
+                print_ticks();
+            }
+            break;
+        
+        case IRQ_OFFSET + IRQ_COM1:
+            c = cons_getc();
+            cprintf("serial [%03d] %c\n", c, c);
+            break;
+        case IRQ_OFFSET + IRQ_KBD:
+            c = cons_getc();
+            cprintf("kbd [%03d] %c\n", c, c);
+            break;
+        //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
+        case T_SWITCH_TOU:
+        case T_SWITCH_TOK:
+            panic("T_SWITCH_** ??\n");
+            break;
+        case IRQ_OFFSET + IRQ_IDE1:
+        case IRQ_OFFSET + IRQ_IDE2:
+            /* do nothing */
+            break;
+        default:
+            // in kernel, it must be a mistake
+            if ((tf->tf_cs & 3) == 0) {
+                print_trapframe(tf);
+                panic("unexpected trap in kernel.\n");
+            }
     }
 }
 
@@ -179,8 +204,8 @@ trap_dispatch(struct trapframe *tf) {
  * the code in kern/trap/trapentry.S restores the old CPU state saved in the
  * trapframe and then uses the iret instruction to return from the exception.
  * */
-void
-trap(struct trapframe *tf) {
+/* 对中断进行处理的过程: 所有中断经过trapentry.S中的_alltraps预处理后都会跳转至此 */
+void trap(struct trapframe *tf) {
     // dispatch based on what type of trap occurred
     trap_dispatch(tf);
 }

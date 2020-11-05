@@ -22,7 +22,7 @@ int kern_init(void) {
     extern char edata[], end[];                 //extern表示该变量是一个已经定义的外部变量
     memset(edata, 0, end - edata);
 
-    // 1.初始化终端
+    // 1.初始化终端,这里边包括cga_init()、serial_init()、kbd_init();
     cons_init();                // init the console
 
     // 2.显示字符串
@@ -35,10 +35,16 @@ int kern_init(void) {
 
     pmm_init();                 // init physical memory management
 
+    // 初始化中断控制器
     pic_init();                 // init interrupt controller
+
+    // 初始化idt表 => kern/trap/trap.c
     idt_init();                 // init interrupt descriptor table
 
+    // 初始化时钟 => kern/driver/clock.c
     clock_init();               // init clock interrupt
+
+    
     intr_enable();              // enable irq interrupt
 
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()

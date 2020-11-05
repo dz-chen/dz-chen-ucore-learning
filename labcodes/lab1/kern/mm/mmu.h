@@ -47,6 +47,16 @@
 #define STS_TG32        0xF            // 32-bit Trap Gate
 
 /* Gate descriptors for interrupts and traps */
+/*中断门和陷阱门描述符的定义*/
+/*************关于这个结构体的写法*********************************************
+ * 结构体中的冒号表示位域 
+ * 因为某些信息的存储表示只需要几个bit位就可以表示而不需要一个完整的字节 
+ * 如,unsigned gd_off_15_0 : 16; 说明该字段只占16bit !
+ * unsigned是unsigned int的简称
+ * 注意1:指导书上画的上下两个字,下面的字先填充,应该是将下面的字认为在低地址(虽然其字节编号为8)
+ * 注意2:一个字内,同样是低字节先填充;
+ *      综上,可知使用小端模式
+****************************************************************************/
 struct gatedesc {
     unsigned gd_off_15_0 : 16;        // low 16 bits of offset in segment
     unsigned gd_ss : 16;            // segment selector

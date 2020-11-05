@@ -30,6 +30,7 @@
 #define T_SYSCALL               0x80 // SYSCALL, ONLY FOR THIS PROJ
 
 /* Hardware IRQ numbers. We receive these as (IRQ_OFFSET + IRQ_xx) */
+// IRQ指中断请求
 #define IRQ_OFFSET                32    // IRQ 0 corresponds to int IRQ_OFFSET
 
 #define IRQ_TIMER                0
@@ -59,6 +60,8 @@ struct pushregs {
     uint32_t reg_eax;
 };
 
+
+// 每次trap时,保存的现场内容
 struct trapframe {
     struct pushregs tf_regs;
     uint16_t tf_gs;

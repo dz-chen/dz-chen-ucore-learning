@@ -48,6 +48,7 @@ delay(void) {
 
 #define LPTPORT         0x378
 
+// typedef unsigned short uint16_t
 static uint16_t *crt_buf;
 static uint16_t crt_pos;
 static uint16_t addr_6845;
@@ -106,7 +107,9 @@ serial_init(void) {
 
     // No modem controls
     outb(COM1 + COM_MCR, 0);
+
     // Enable rcv interrupts
+    // 使能串口1接受字符后产生中断
     outb(COM1 + COM_IER, COM_IER_RDI);
 
     // Clear any preexisting overrun indications and interrupts
@@ -116,6 +119,7 @@ serial_init(void) {
     (void) inb(COM1+COM_RX);
 
     if (serial_exists) {
+        // 通过中断控制器使能串口1中断
         pic_enable(IRQ_COM1);
     }
 }
@@ -417,6 +421,8 @@ static void
 kbd_init(void) {
     // drain the kbd buffer
     kbd_intr();
+
+    // 通过中断控制器使能键盘输入中断
     pic_enable(IRQ_KBD);
 }
 

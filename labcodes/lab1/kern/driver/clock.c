@@ -23,6 +23,9 @@
 #define TIMER_RATEGEN   0x04                    // mode 2, rate generator
 #define TIMER_16BIT     0x30                    // r/w counter 16 bits, LSB first
 
+
+// volatile的变量是说这变量可能会被意想不到地改变,这样,编译器就不会去假设这个变量的值了
+// => 详见:https://blog.csdn.net/vay0721/article/details/79035854
 volatile size_t ticks;
 
 /* *
@@ -33,6 +36,7 @@ void
 clock_init(void) {
     // set 8253 timer-chip
     outb(TIMER_MODE, TIMER_SEL0 | TIMER_RATEGEN | TIMER_16BIT);
+    // 设置时钟每秒中断100次
     outb(IO_TIMER1, TIMER_DIV(100) % 256);
     outb(IO_TIMER1, TIMER_DIV(100) / 256);
 
@@ -40,6 +44,7 @@ clock_init(void) {
     ticks = 0;
 
     cprintf("++ setup timer interrupts\n");
+    // 通过中断控制器使能时钟中断
     pic_enable(IRQ_TIMER);
 }
 

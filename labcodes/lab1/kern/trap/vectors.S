@@ -1,4 +1,17 @@
 # handler
+# #########################################################  中断处理映射 
+# 由tools/vector.c生成
+# 在压入必要参数后,所有中断处理函数跳转到统一入口:__alltraps
+# __alltraps定义在 ./trapentry.S
+#
+# 每个vectori,就是中断服务例程i的入口地址(或者说就是一个中断服务例程)!!!
+#
+# .long vector1 的含义 => 将vector1的地址写入__vectors[1]中 
+#     =>即_vectors中存储的是中断服务处理程序vectori的入口地址  
+#
+# 为什么vectori要压栈? 
+
+
 .text
 .globl __alltraps
 .globl vector0
@@ -1279,7 +1292,7 @@ vector255:
 .data
 .globl __vectors
 __vectors:
-  .long vector0
+  .long vector0       # 一个.long对应四字节
   .long vector1
   .long vector2
   .long vector3

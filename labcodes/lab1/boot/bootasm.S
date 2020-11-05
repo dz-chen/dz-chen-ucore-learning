@@ -145,6 +145,7 @@ spin:
 # 段描述符格式:https://chyyuu.gitbooks.io/ucore_os_docs/content/lab1_figs/image003.png
 # 基址32位; 限长20位; 属性... ; 注意基址、限长的bit不是连续的!!!
 # SEG_ASM(type,base,lim)
+# 为什么代码段、数据段的基址可以是一样的??
 gdt:
     SEG_NULLASM                                     # null seg  => 第一个段描述符设定为空段描述符
     SEG_ASM(STA_X|STA_R, 0x0, 0xffffffff)           # code seg for bootloader and kernel

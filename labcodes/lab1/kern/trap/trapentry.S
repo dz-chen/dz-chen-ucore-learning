@@ -20,7 +20,7 @@ __alltraps:
     # push %esp to pass a pointer to the trapframe as an argument to trap()
     pushl %esp
 
-    # call trap(tf), where tf=%esp
+    # call trap(tf), where tf=%esp  => 至此完成了预处理,然后跳转到trap函数,见./trap.c
     call trap
 
     # pop the pushed stack pointer

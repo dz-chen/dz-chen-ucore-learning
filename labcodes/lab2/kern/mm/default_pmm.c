@@ -16,7 +16,7 @@
 // you should rewrite functions: `default_init`, `default_init_memmap`,
 // `default_alloc_pages`, `default_free_pages`.
 /*
- * Details of FFMA
+ * Details of FFMA(First-Fit Memory Allocation)
  * (1) Preparation:
  *  In order to implement the First-Fit Memory Allocation (FFMA), we should
  * manage the free memory blocks using a list. The struct `free_area_t` is used
@@ -42,7 +42,7 @@
  * procedure includes:
  *  - Setting the bit `PG_property` of `p->flags`, which means this page is
  * valid. P.S. In function `pmm_init` (in pmm.c), the bit `PG_reserved` of
- * `p->flags` is already set.
+ * `p->flags` is already set. => page_init()中
  *  - If this page is free and is not the first page of a free block,
  * `p->property` should be set to 0.
  *  - If this page is free and is the first page of a free block, `p->property`
@@ -93,98 +93,137 @@
  *      Try to merge blocks at lower or higher addresses. Notice: This should
  *  change some pages' `p->property` correctly.
  */
-free_area_t free_area;
+
+free_area_t free_area;  // 包含双向空闲链表的结构体; 全局变量,作用于整个程序
 
 #define free_list (free_area.free_list)
 #define nr_free (free_area.nr_free)
 
-static void
-default_init(void) {
+/* pmm_manager结构体中init的默认实现,初始化后的双向链表其实是环形,见list_init函数 */
+static void default_init(void) {
     list_init(&free_list);
     nr_free = 0;
 }
 
-static void
-default_init_memmap(struct Page *base, size_t n) {
+
+/* pmm_manager结构体中init_memmap的默认实现 */
+/**
+ * base:物理页帧的起始地址
+ * n   :frame个数
+ * 作用:将从base开始的n个物理页帧初始化为一个空闲块,将空闲块加入链表
+ * */
+static void default_init_memmap(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
-        assert(PageReserved(p));
+        assert(PageReserved(p));        // 检验是否设置了PG_reserved(在page_init中设置)
         p->flags = p->property = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
-    SetPageProperty(base);
+    SetPageProperty(base);              // 标明这个page是空闲块的head
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    // 初始化时,传入的base递增,为了保持链表按地址递增,所以插在free_list前
+    // 与直接使用list_add本质上没有区别
+    //list_add(&free_list,&(base->page_link));
+    // 这个双向链表其实是环形的! 关键就在于list_init的初始化方法
+    /**
+     * 注意page_link的定义,它只是Page中一个成员变量,双向链表通过它进行链接
+     * 但是page_link中并不包含页的数据;
+     * 也就是说,双向链表本质上链接的只是page的page_link成员,而不是page对象!!!
+     * */
+    list_add_before(&free_list,&(base->page_link)); 
 }
 
-static struct Page *
-default_alloc_pages(size_t n) {
+
+/* pmm_manager结构体中alloc_pages的默认实现 */
+static struct Page * default_alloc_pages(size_t n) {
     assert(n > 0);
-    if (n > nr_free) {
+    if (n > nr_free) { 
         return NULL;
     }
     struct Page *page = NULL;
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
-        struct Page *p = le2page(le, page_link);
-        if (p->property >= n) {
-            page = p;
+        struct Page *p = le2page(le, page_link);        // 获取page_link对应的页(其实就是通过page_link的物理内存位置,根据固定的偏移,计算其所在页的位置)
+        if (p->property >= n) {                 // => 首次适应,找到第一个匹配的空闲块就返回
+            page = p;       
             break;
         }
     }
-    if (page != NULL) {
+    if (page != NULL) {                        //找到了匹配的物理页
         list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
+            SetPageProperty(p);          // 标明此页是空闲块的head
+            list_add_before(&(page->page_link), &(p->page_link));
+        }
         nr_free -= n;
+        list_del(&(page->page_link));
         ClearPageProperty(page);
     }
     return page;
 }
 
-static void
-default_free_pages(struct Page *base, size_t n) {
+
+/* pmm_manager结构体中free_pages的默认实现 */
+/**
+ * 作用:释放从base开始的n个page
+ *      如果释放后有相邻空闲块,则合并空闲块
+ * */
+
+static void default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
+    //释放n个page
     struct Page *p = base;
-    for (; p != base + n; p ++) {
+    for (; p != base + n; p ++) {              
         assert(!PageReserved(p) && !PageProperty(p));
-        p->flags = 0;
+        p->flags = 0;           
         set_page_ref(p, 0);
     }
     base->property = n;
-    SetPageProperty(base);
+    SetPageProperty(base);                      //标记空闲块的head
+
+    // 合并空闲块,组成新的链表
     list_entry_t *le = list_next(&free_list);
     while (le != &free_list) {
         p = le2page(le, page_link);
         le = list_next(le);
-        if (base + base->property == p) {
+        if (base + base->property == p) {      //合并base后面的空闲块
             base->property += p->property;
             ClearPageProperty(p);
             list_del(&(p->page_link));
         }
-        else if (p + p->property == base) {
+        else if (p + p->property == base) {    //合并base前面的空闲块
             p->property += base->property;
             ClearPageProperty(base);
             base = p;
             list_del(&(p->page_link));
         }
     }
+    
+    // 将合并后的空闲链表插入到合适的位置
+    // 可改进为:在合并的时候进行插入...
+    le = list_next(&free_list);
+    while(le!=&free_list){
+        p=le2page(le,page_link);
+        if(base+base->property<p) break;
+        le=list_next(le);
+    }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(le, &(base->page_link));
 }
 
-static size_t
-default_nr_free_pages(void) {
+static size_t default_nr_free_pages(void) {
     return nr_free;
 }
 
-static void
-basic_check(void) {
+
+
+// LAB2: below code is used to check the first fit allocation algorithm (your EXERCISE 1) 
+// NOTICE: You SHOULD NOT CHANGE basic_check, default_check functions!
+static void basic_check(void) {
     struct Page *p0, *p1, *p2;
     p0 = p1 = p2 = NULL;
     assert((p0 = alloc_page()) != NULL);
@@ -234,10 +273,8 @@ basic_check(void) {
     free_page(p2);
 }
 
-// LAB2: below code is used to check the first fit allocation algorithm (your EXERCISE 1) 
-// NOTICE: You SHOULD NOT CHANGE basic_check, default_check functions!
-static void
-default_check(void) {
+
+static void default_check(void) {
     int count = 0, total = 0;
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
@@ -300,6 +337,8 @@ default_check(void) {
     assert(total == 0);
 }
 
+
+// 默认的物理内存管理器,在pmm.c中默认使用此初始值
 const struct pmm_manager default_pmm_manager = {
     .name = "default_pmm_manager",
     .init = default_init,

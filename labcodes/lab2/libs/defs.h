@@ -46,6 +46,7 @@ typedef size_t ppn_t;
         })
 
 /* Round up to the nearest multiple of n */
+/* 向上取整到n的最近倍数 */
 #define ROUNDUP(a, n) ({                                            \
             size_t __n = (size_t)(n);                               \
             (typeof(a))(ROUNDDOWN((size_t)(a) + __n - 1, __n));     \

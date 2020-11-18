@@ -5,6 +5,13 @@
 
 #include <defs.h>
 
+/* ******************************** 通用双向链表  *******************************/
+
+/**
+ *需掌握`list_init`, `list_add`(`list_add_after`), `list_add_before`, `list_del`,
+ * `list_next`, `list_prev`.
+ * */
+
 /* *
  * Simple doubly linked list implementation.
  *
@@ -37,8 +44,8 @@ static inline void __list_del(list_entry_t *prev, list_entry_t *next) __attribut
  * list_init - initialize a new entry
  * @elm:        new entry to be initialized
  * */
-static inline void
-list_init(list_entry_t *elm) {
+// 这样初始化其实保证了最终使用时构成环形的双向链表
+static inline void  list_init(list_entry_t *elm) {
     elm->prev = elm->next = elm;
 }
 
@@ -118,8 +125,7 @@ list_empty(list_entry_t *list) {
  * list_next - get the next entry
  * @listelm:    the list head
  **/
-static inline list_entry_t *
-list_next(list_entry_t *listelm) {
+static inline list_entry_t *list_next(list_entry_t *listelm) {
     return listelm->next;
 }
 
@@ -127,8 +133,7 @@ list_next(list_entry_t *listelm) {
  * list_prev - get the previous entry
  * @listelm:    the list head
  **/
-static inline list_entry_t *
-list_prev(list_entry_t *listelm) {
+static inline list_entry_t *list_prev(list_entry_t *listelm) {
     return listelm->prev;
 }
 

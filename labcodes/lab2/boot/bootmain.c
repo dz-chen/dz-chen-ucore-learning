@@ -104,6 +104,10 @@ bootmain(void) {
 
     // call the entry point from the ELF header
     // note: does not return
+    //  不同于lab1,这里的入口函数不是kern/init/init.c中的kern_init()函数
+    // => 而是kern/init/entry.S中的kern_entry()函数 => 它为执行kern_init建立一个良好的c原因运行环境(比如设置堆栈)
+    // 且建立了一个临时的映射关系,为了之后的分页做准备
+    // 之后,kern_entry()再调用kern_init()函数
     ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
 
 bad:

@@ -43,23 +43,25 @@ seta20.2:
     movb $0xdf, %al                                 # 0xdf -> port 0x60
     outb %al, $0x60                                 # 0xdf = 11011111, means set P2's A20 bit(the 1 bit) to 1
 
+# ##########################  探测物理内存,lab1没有这部分!
 probe_memory:
-    movl $0, 0x8000
+    movl $0, 0x8000      # 对0x8000处的的4字节置0 => 即将e820map结构体的nr_map字段置0; 注意此时处于实模式!
     xorl %ebx, %ebx
-    movw $0x8004, %di
+    movw $0x8004, %di    # INT 15h中断调用后,BIOS返回的地址范围描述符的起始地址(忽略了4字节的nr_map字段);见e820map结构体
 start_probe:
-    movl $0xE820, %eax
-    movl $20, %ecx
-    movl $SMAP, %edx
-    int $0x15
-    jnc cont
-    movw $12345, 0x8000
+    movl $0xE820, %eax   # 设置INT 15h中断调用的参数
+    movl $20, %ecx       # 设置地址范围描述符的大小为20字节,其大小等于struct e820map的成员变量map的大小
+    movl $SMAP, %edx     # 设置edx为534D4150h(即4个ASCII字符"SMAP"),这是一个约定
+    int $0x15            # 调用int 0x15中断,要求BIOS返回一个用地址范围描述符表示的内存段信息(返回结果的地址为0x8004,已经存入%di)
+    jnc cont             # 如果eflags的CF位为0,则表示还有内存段需要探测 => 跳转到cont,重新设置int 15h的返回地址,继续探测...; CF是进位标志
+    movw $12345, 0x8000  # 探测有问题,结束探测
     jmp finish_probe
 cont:
-    addw $20, %di
-    incl 0x8000
-    cmpl $0, %ebx
+    addw $20, %di        # 设置下一个BIOS返回的映射地址描述符的起始地址
+    incl 0x8000          # 递增struct e820map的成员变量nr_map
+    cmpl $0, %ebx        # 如果INT0x15返回的ebx为零,表示探测结束,否则继续探测
     jnz start_probe
+# ##########################  探测物理内存end,lab1没有这部分!
 finish_probe:
 
     # Switch from real to protected mode, using a bootstrap GDT

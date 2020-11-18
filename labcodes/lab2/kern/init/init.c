@@ -28,6 +28,7 @@ kern_init(void) {
 
     grade_backtrace();
 
+    // 物理内存管理 => 见pmm.c
     pmm_init();                 // init physical memory management
 
     pic_init();                 // init interrupt controller

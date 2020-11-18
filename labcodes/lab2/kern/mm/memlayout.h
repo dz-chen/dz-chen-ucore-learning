@@ -34,14 +34,14 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE => 这部分存放页表,共4MB
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
  *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
  *                            |                                 |
- *     KERNBASE ------------> +---------------------------------+ 0xC0000000
+ *     3G KERNBASE ---------> +---------------------------------+ 0xC0000000
  *                            |                                 |
  *                            |                                 |
  *                            |                                 |
@@ -53,9 +53,16 @@
  * */
 
 /* All physical memory mapped at this address */
-#define KERNBASE            0xC0000000
-#define KMEMSIZE            0x38000000                  // the maximum amount of physical memory
-#define KERNTOP             (KERNBASE + KMEMSIZE)
+#define KERNBASE            0xC0000000                  // 3GB处,即虚拟地址的3G往上映射给内核(当然,不是3-4G全部,详见上面示意图)
+#define KMEMSIZE            0x38000000                  // 896MB,内核最多能占用的虚拟/物理内存大小; the maximum amount of physical memory
+#define KERNTOP             (KERNBASE + KMEMSIZE)       // 内核的虚拟地址上界
+/**
+ * 注:虽然KERNBASE被设置为0xC0000000,但内核真正的起始虚拟地址是0xC0100000 (见kernel.ld)
+ *    0xC0000000~0xC0100000恰好1MB,恰好对应物理地址0~1MB中的BIOS、bootloader等内容...
+ *    0xC0100000往上才是内核代码(即物理地址1MB往上的代码)
+ *    by cdz 11.17 
+ * */
+
 
 /* *
  * Virtual page table. Entry PDX[VPT] in the PD (Page Directory) contains
@@ -65,8 +72,8 @@
  * */
 #define VPT                 0xFAC00000
 
-#define KSTACKPAGE          2                           // # of pages in kernel stack
-#define KSTACKSIZE          (KSTACKPAGE * PGSIZE)       // sizeof kernel stack
+#define KSTACKPAGE          2                           // 内核栈的大小为8kb,即两个page
+#define KSTACKSIZE          (KSTACKPAGE * PGSIZE)       // sizeof kernel stack =8kb
 
 #ifndef __ASSEMBLER__
 
@@ -82,12 +89,21 @@ typedef uintptr_t pde_t;
 #define E820_ARM            1       // address range memory
 #define E820_ARR            2       // address range reserved
 
+// 地址范围描述符(加了nr_map字段)
 struct e820map {
-    int nr_map;
-    struct {
-        uint64_t addr;
-        uint64_t size;
-        uint32_t type;
+    int nr_map; // 当前是第几个map,从0开始编号
+    struct {   // 地址范围描述符
+        uint64_t addr;          //基址,8byte
+        uint64_t size;          //大小,8byte
+        uint32_t type;          //类型,4byte
+        /************************ 关于上面type的取值解释如下
+         *  01h    memory, available to OS
+         *  02h    reserved, not available (e.g. system ROM, memory-mapped device)
+         *  03h    ACPI Reclaim Memory (usable by OS after reading ACPI tables)
+         *  04h    ACPI NVS Memory (OS is required to save this memory between NVS sessions)
+         *  other  not defined yet -- treat as Reserved
+         * 
+         * *************************************************************/
     } __attribute__((packed)) map[E820MAX];
 };
 
@@ -96,10 +112,17 @@ struct e820map {
  * physical page. In kern/mm/pmm.h, you can find lots of useful functions
  * that convert Page to other data types, such as phyical address.
  * */
+// 描述物理页(帧)的结构体
 struct Page {
+    // 若某个页表项设置了某个虚拟页到这个物理页帧的映射,ref会+1
     int ref;                        // page frame's reference counter
-    uint32_t flags;                 // array of flags that describe the status of the page frame
+    //  flags有32bit,目前只用到两个bit
+    // bit 0表示此页是否被保留 => bit 0 为1表示此页保留给操作系统使用;不能放到空闲页链表中
+    // bit 1表示此页是否是free的 => bit 1为1表示此页free,可以被分配;否则表示已经分配了
+    uint32_t flags;                 // array of flags that describe the status of the page frame => 见PG_property、 PG_reserved
+    // 用于记录某连续物理内存空闲块的大小(个数),空闲块的第一个page才会使用这个字段 => 非第一个page需要设置为0!!
     unsigned int property;          // the num of free block, used in first fit pm manager
+    // 双向链表,连接连续的物理内存空闲块,空闲块的第一个page才会使用这个字段!! 连接的是空闲块而不是页!
     list_entry_t page_link;         // free list link
 };
 
@@ -118,10 +141,13 @@ struct Page {
 #define le2page(le, member)                 \
     to_struct((le), struct Page, member)
 
+
+
+/* 双向空闲链表,以空闲块为链接单位(而不是空闲页) */
 /* free_area_t - maintains a doubly linked list to record free (unused) pages */
 typedef struct {
-    list_entry_t free_list;         // the list header
-    unsigned int nr_free;           // # of free pages in this free list
+    list_entry_t free_list;         // the list header => 链表头
+    unsigned int nr_free;           // # of free pages in this free list => 空闲链表中的总页数
 } free_area_t;
 
 #endif /* !__ASSEMBLER__ */

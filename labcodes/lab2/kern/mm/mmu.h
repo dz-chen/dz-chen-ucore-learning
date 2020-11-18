@@ -200,7 +200,8 @@ struct taskstate {
 // To construct a linear address la from PDX(la), PTX(la), and PGOFF(la),
 // use PGADDR(PDX(la), PTX(la), PGOFF(la)).
 
-// page directory index
+// page directory index => 从逻辑地址中提取出页目录表项的索引
+// 理论上不用&0x3FF,但是这一操作可保证无论数字有无符号、逻辑移还是算数移,结果都是预期的
 #define PDX(la) ((((uintptr_t)(la)) >> PDXSHIFT) & 0x3FF)
 
 // page table index
@@ -216,6 +217,7 @@ struct taskstate {
 #define PGADDR(d, t, o) ((uintptr_t)((d) << PDXSHIFT | (t) << PTXSHIFT | (o)))
 
 // address in page table or page directory entry
+// 提取pte/pde中内容的高20bit
 #define PTE_ADDR(pte)   ((uintptr_t)(pte) & ~0xFFF)
 #define PDE_ADDR(pde)   PTE_ADDR(pde)
 
@@ -224,7 +226,7 @@ struct taskstate {
 #define NPTEENTRY       1024                    // page table entries per page table
 
 #define PGSIZE          4096                    // bytes mapped by a page
-#define PGSHIFT         12                      // log2(PGSIZE)
+#define PGSHIFT         12                      // log2(PGSIZE) => 即一个页对应的位数
 #define PTSIZE          (PGSIZE * NPTEENTRY)    // bytes mapped by a page directory entry
 #define PTSHIFT         22                      // log2(PTSIZE)
 
@@ -232,9 +234,9 @@ struct taskstate {
 #define PDXSHIFT        22                      // offset of PDX in a linear address
 
 /* page table/directory entry flags */
-#define PTE_P           0x001                   // Present
-#define PTE_W           0x002                   // Writeable
-#define PTE_U           0x004                   // User
+#define PTE_P           0x001                   // Present           => 表示对应的物理内存页存在
+#define PTE_W           0x002                   // Writeable         => 表示物理内存页可写
+#define PTE_U           0x004                   // User              => 表示用户态软件可以读取对应物理内存页的内容
 #define PTE_PWT         0x008                   // Write-Through
 #define PTE_PCD         0x010                   // Cache-Disable
 #define PTE_A           0x020                   // Accessed

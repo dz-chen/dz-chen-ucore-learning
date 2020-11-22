@@ -305,5 +305,29 @@ print_stackframe(void) {
       *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
       *                   the calling funciton's ebp = ss:[ebp]
       */
+     // 1.call read_ebp()  => 获取ebp寄存器的内容
+    uint32_t ebp=read_ebp();
+    // 2.call read_eip()
+    uint32_t eip=read_eip();
+
+    /********* 3.打印所有栈帧内容... *******/
+    // while(ebp!=0x0) => 按题意,只打印栈深度以内的数据
+   for(int i=0;i<STACKFRAME_DEPTH;i++){
+        if(ebp==0) break;
+         // 3.1 printf value of ebp, eip
+        cprintf("ebp:0x%08x eip:0x%08x ",ebp,eip);
+        // 3.2 打印函数调用的参数
+        uint32_t* args = (uint32_t*) ebp+2;   // 直接以4字节为单位
+        cprintf("args:0x%08x 0x%08x 0x%08x 0x%08x",args[0],args[1],args[2],args[3]);
+        // 3.3 换行
+        cprintf("\n");
+        // 3.4 打印debuginfo
+        print_debuginfo(eip-1);
+        // 3.5 出栈,继续打印上一帧内容 => 为什么更新ebp、eip的顺序会影响print_debuginfo的调用结果???
+        // ebp=((uint32_t *)ebp)[0];
+        // eip=((uint32_t *)ebp)[1];            // 栈ebp地址往上4byte是返回地址
+        eip =( (uint32_t*) ebp)[1];     //进入上一层的栈
+        ebp= ((uint32_t* ) ebp)[0];
+    }
 }
 

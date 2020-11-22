@@ -10,6 +10,9 @@ lab1自己添加的注释过多,使用工具合并不方便 => 仅仅直接将�
 
 
 
+# 练习3:释放某虚拟地址所在的页并取消对应二级页表项的映射  
+...
+
 # 补充:探测系统物理内存布局
 ## 概述
 获取物理内存调用的方法有:BIOS中断调用、直接探测
@@ -267,46 +270,171 @@ virt addr = linear addr = phy addr + 0xC0000000  #对所有线性地址
 
 # 补充:建立虚拟页和物理页帧的地址映射关系(重要)
 
-
-
-
-
 # 补充:物理内存页分配算法实现(结合练习1看)
 本节主要描述First Fit的实现
 1.需要熟悉相关数据结构及其操作,详看./libs/list.h、free_area_t、pmm_manager等
 2.First Fit的实现需要重写`default_init`, `default_init_memmap`, `default_alloc_pages`, `default_free_pages`,详见./kern/mm/default_pmm.c
 ...略
 
+# 补充:链接脚本及其中各符号的解读
+```
+/* Simple linker script for the ucore kernel.
+   See the GNU ld 'info' manual ("info ld") to learn the syntax. */
+
+/********************* 备注 **************************
+* 1. "."表示当前地址
+* 2. .ld文件中定义的edata[]、end[]是全局变量,会在部分源代码中引用(init.c),他们表示相应段的起始或结束地址
+* 3. elf三类文件格式参考csapp第七章
+*****************************************************/
+
+
+OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
+OUTPUT_ARCH(i386)       /* cpu类型 */
+ENTRY(kern_entry)       /* 程序入口*/
+
+SECTIONS {
+    /* Load the kernel at this address: "." means the current address */
+    . = 0xC0100000;      /* 内核被链接到从这个虚拟地址开始的虚拟地址空间 */
+    .text : {            /* .text 表示代码段起始地址 */
+        *(.text .stub .text.* .gnu.linkonce.t.*)
+    }
+
+    PROVIDE(etext = .); /* Define the 'etext' symbol to this value */
+
+    .rodata : {
+        *(.rodata .rodata.* .gnu.linkonce.r.*)
+    }
+
+    /* Include debugging information in kernel memory */
+    .stab : {
+        PROVIDE(__STAB_BEGIN__ = .);
+        *(.stab);
+        PROVIDE(__STAB_END__ = .);
+        BYTE(0)     /* Force the linker to allocate space
+                   for this section */
+    }
+
+    .stabstr : {
+        PROVIDE(__STABSTR_BEGIN__ = .);
+        *(.stabstr);
+        PROVIDE(__STABSTR_END__ = .);
+        BYTE(0)     /* Force the linker to allocate space
+                   for this section */
+    }
+
+    /* Adjust the address for the data segment to the next page */
+    . = ALIGN(0x1000);
+
+    /* The data segment */
+    .data : {
+        *(.data)
+    }
+
+    . = ALIGN(0x1000);
+    .data.pgdir : {
+        *(.data.pgdir)
+    }
+
+    PROVIDE(edata = .);  /* edata代表数据段的结束地址 */
+
+    .bss : {            /* .bss也是数据段的结束地址,同时还是BSS段的起始地址*/
+        *(.bss)
+    }
+
+    PROVIDE(end = .);  /* end 是BSS段的结束地址*/
+
+    /DISCARD/ : {
+        *(.eh_frame .note.GNU-stack)
+    }
+}
+```
+.ld文件中给出的地址是ucore内的的链接地址 == ucore内核的虚拟地址;  
+bootloader加载ucore内核用到的加载地址 == ucore内核的物理地址; (这一条详见bootmain.c)
+
+
+
+# 补充:ucore采用的自映射机制(重要,未完全懂?)
+## 为什么需要自映射
+通过boot_map_segment函数(见pmm.c)建立了基于一一映射关系的页目录表项和页表项,这里的映射关系为:  
+```
+virtual addr (KERNBASE~KERNBASE+KMEMSIZE) = physical_addr (0~KMEMSIZE)
+```  
+这样只要给出一个虚地址和一个物理地址,就可以设置相应PDE和PTE,就可完成正确的映射关系  
+
+如果我们这时需要按虚拟地址的地址顺序显示整个页目录表和页表的内容,则要查找页目录表的页目录表项内容,根据页目录表项内容找到页表的物理地址,再转换成对应的虚地址,然后访问页表的虚地址,搜索整个页表的每个页目录项.这样过程比较繁琐.  
+
+我们需要有一个简洁的方法来实现这个查找.ucore做了一个很巧妙的地址自映射设计 => 把页目录表和页表放在一个连续的4MB虚拟地址空间中,并设置页目录表自身的虚地址<==>物理地址映射关系.这样在已知页目录表起始虚地址的情况下,通过连续扫描这特定的4MB虚拟地址空间,就很容易访问每个页目录表项和页表项内容.  
+
+## ucore自映射的实现
+- **1.设置常量VPT**  
+在memlayout.h中定义常量`VTP=0xFAC00000`,对应的二进制表示为 `1111 1010 1100 0000 0000 0000 0000 0000`
+注意这个虚拟地址的高10位为1003,中10位为0,低12位也为0!
+
+- **2.映射页表**  
+在pmm.c中设置两个全局变量
+```
+ // 32位整数 => vpt就代表了页表(二级页表)的起始虚拟地址(也就是一级页表中第一个表项指向的页表的虚拟地址)
+pte_t * const vpt = (pte_t *)VPT; 
+// vpd=0xFAFEB000,它是页目录表(一级页表)的起始虚拟地址,其高10bit和中10bit都是1003  
+// 为什么vpd要这样设置??
+pde_t * const vpd = (pde_t *)(PGADDR(PDX(VPT), PDX(VPT), 0));  
+```  
+且在pmm_init()函数中执行:  
+```
+// 设置页表(所有页表,共4MB)对应的页目录表项!!!
+boot_pgdir[PDX(VPT)] = PADDR(boot_pgdir) | PTE_P | PTE_W; 
+```  
+
+- **3.print_pgdir()打印页表内容**  
+执行结果:
+```
+PDE(0e0) c0000000-f8000000 38000000 urw          
+  |-- PTE(38000) c0000000-f8000000 38000000 -rw
+PDE(001) fac00000-fb000000 00400000 -rw
+  |-- PTE(000e0) faf00000-fafe0000 000e0000 urw
+  |-- PTE(00001) fafeb000-fafec000 00001000 -rw
+```  
+其中`PDE(0e0) c0000000-f8000000 38000000 urw`表示:
+1.页目录表中相邻的224(0e0)项具有相同权限;  
+2.这224项映射的虚拟地址范围是c0000000-f8000000;  
+3.虚拟地址大小为38000000(共896MB,恰好与224项对应,224*4MB);  
+4.具体权限为urw(存在,用户可读、可写)  
+同理可得`PDE(001) fac00000-fb000000 00400000 -rw`...这一段恰好是所有页表(4MB)对应的页目录表项
+
+- **4.用户程序通过自映射机制访问页表**  
+自映射机制还可方便用户态程序访问页表.因为页表是内核维护的,用户程序很难知道自己页表的映射结构,VPT 实际上在内核地址空间的,我们可以用同样的方式实现一个用户地址空间的映射(比如 pgdir[UVPT] = PADDR(pgdir) | PTE_P | PTE_U,注意,这里不能给写权限,并且 pgdir 是每个进程的 page table,不是 boot_pgdir).这样,用户程序就可以用和内核一样的 print_pgdir 函数遍历自己的页表结构了
+
+
 
 
 # 相关要点/问题速览
-- **如何将Page结构体数组放到指定位置(它需要紧接在ucore内核代码后)?**
+- **如何将Page结构体数组放到指定位置(它需要紧接在ucore内核代码后)?**  
 ????
 
-- **如何根据双向链表节点获取对应的物理页?**
+- **如何根据双向链表节点获取对应的物理页?**  
 ???
 
-- **如何在建立页表的过程中维护页表和GDT的关系,确保ucore能够在各时间段上正常寻址?**
+- **如何在建立页表的过程中维护页表和GDT的关系,确保ucore能够在各时间段上正常寻址?**  
 ??
 
-- **哪些物理内存空间需要建立页映射关系?**
+- **哪些物理内存空间需要建立页映射关系?**  
 ??
 
-- **具体的页映射关系是什么?**
+- **具体的页映射关系是什么?**  
 ??
-- **页目录表的起始地址设置在哪里?**
+- **页目录表的起始地址设置在哪里?**  
 ??
-- **页表的起始地址设置在哪里,需要多大空间?**
+- **页表的起始地址设置在哪里,需要多大空间?**  
 ??
-- **如何设置页目录表项的内容?**
+- **如何设置页目录表项的内容?**  
 ??
-- **如何设置页表项的内容?**
+- **如何设置页表项的内容?**  
 ??
 
 - **如何理解地址映射的第二阶段?**  
 ??
 
-- **entry.S中内栈那样设置的依据(为何ebp设置为0,为何内核栈填充满之后才设置esp)?**
+- **entry.S中内栈那样设置的依据(为何ebp设置为0,为何内核栈填充满之后才设置esp)?**  
 ??
 
 - **页目录表__boot_pgdir在哪里?页表在哪里?**  
@@ -316,5 +444,9 @@ virt addr = linear addr = phy addr + 0xC0000000  #对所有线性地址
 - **get_pte()函数中,给二级页表分配物理空间时,如何保证二级页表的虚拟地址在0xFAC00000往上的4MB范围内??**  
 ??
 
-- **对于struct Page* page; 计算page对应物理页号的原理??**  
+- **对于struct Page* page;计算page对应物理页号的原理??**  
 参见pmm.h,page2pa()函数
+
+- **为什么pmm.c中令vpd=0xFAFEB000,使得页目录表夹在4MB的页表虚拟地址空间的内部??**  
+??
+

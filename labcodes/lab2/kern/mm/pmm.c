@@ -64,7 +64,7 @@ const struct pmm_manager *pmm_manager;
  * always available at virtual address PGADDR(PDX(VPT), PDX(VPT), 0), to which
  * vpd is set bellow.
  * */
-pte_t * const vpt = (pte_t *)VPT;           // 32位整数,VPT的虚拟地址
+pte_t * const vpt = (pte_t *)VPT;           // 32位整数,VPT的起始虚拟地址
 pde_t * const vpd = (pde_t *)(PGADDR(PDX(VPT), PDX(VPT), 0));  // 页目录表的虚拟地址位置(起始就是vpt的起始地址)
 
 /* *
@@ -319,7 +319,7 @@ void pmm_init(void) {
 
     // recursively insert boot_pgdir in itself
     // to form a virtual page table at virtual address VPT
-    // ---------- =>   设置页表对应的页目录表项!!!
+    // ---------- =>   设置页表(所有页表,共4MB)对应的页目录表项!!!
     // 对PTE_W的解释:只有当一级、二级页表上都设置了用户写权限后,用户才能对对应的物理地址进行读写;
     //              所以可以在一级页表先给用户写权限,再在二级页表上根据需要限制用户的访问,从而对物理页进行保护
     boot_pgdir[PDX(VPT)] = PADDR(boot_pgdir) | PTE_P | PTE_W;   

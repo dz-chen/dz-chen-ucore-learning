@@ -48,6 +48,24 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    // 1.声明中断服务例程的入口地址(不是描述符表!!),它定义在vetors.S中 => .globl __vectors(见./vectors.S,由tools/vectors.c生成)
+    extern uintptr_t __vectors[];      // uintptr_t即unsigned int => 其中每个元素,就是一个中断服务例程的入口地址
+
+    // 2.填充IDT
+    // 2.1 ... 如何解释段选择子、istrap这样设置的原因??
+    for(size_t i=0;i<256;i++){
+        int istrap=0;                   // 是否陷阱 => 否,会关中断; 但是区别不大,也可不这样设置
+        int sel=GD_KTEXT;               // 段选择子;
+        int off=__vectors[i];           // 存储的基址在代码段中的偏移; 段偏移与eip对应
+        int dpl=DPL_KERNEL;             // 系统调用中断T_SYSCALL使用特权级为3,其他全为0
+        SETGATE(idt[i],istrap,sel,off,dpl);         // 宏,见mmu.h
+    }
+    // 2.2 处理存在特权级切换的特殊情况,这里选择中断号121系统调用
+    // 系统调用的权限仅为用户权限,理由 ??
+    SETGATE(idt[T_SWITCH_TOK],0,GD_KTEXT,__vectors[T_SWITCH_TOK],DPL_USER);
+
+    // 3.加载idt的地址到idtr; 从idt_pd处加载
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -162,8 +180,7 @@ pgfault_handler(struct trapframe *tf) {
 static volatile int in_swap_tick_event = 0;
 extern struct mm_struct *check_mm_struct;
 
-static void
-trap_dispatch(struct trapframe *tf) {
+static void trap_dispatch(struct trapframe *tf) {
     char c;
 
     int ret;
@@ -186,6 +203,10 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+        ticks++;
+        if(ticks % TICK_NUM ==0){
+            print_ticks();
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
@@ -218,8 +239,7 @@ trap_dispatch(struct trapframe *tf) {
  * the code in kern/trap/trapentry.S restores the old CPU state saved in the
  * trapframe and then uses the iret instruction to return from the exception.
  * */
-void
-trap(struct trapframe *tf) {
+void trap(struct trapframe *tf) {
     // dispatch based on what type of trap occurred
     trap_dispatch(tf);
 }

@@ -55,7 +55,7 @@
 /* All physical memory mapped at this address */
 #define KERNBASE            0xC0000000                  // 3GB处,即虚拟地址的3G往上映射给内核(当然,不是3-4G全部,详见上面示意图)
 #define KMEMSIZE            0x38000000                  // 896MB,内核最多能占用的虚拟/物理内存大小; the maximum amount of physical memory
-#define KERNTOP             (KERNBASE + KMEMSIZE)       // 内核的虚拟地址上界
+#define KERNTOP             (KERNBASE + KMEMSIZE)       // 内核的虚拟地址上界; KMEMSIZE的大小只是一个设定,可以改变
 /**
  * 注:虽然KERNBASE被设置为0xC0000000,但内核真正的起始虚拟地址是0xC0100000 (见kernel.ld)
  *    0xC0000000~0xC0100000恰好1MB,恰好对应物理地址0~1MB中的BIOS、bootloader等内容...

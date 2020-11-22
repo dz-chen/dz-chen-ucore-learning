@@ -333,7 +333,7 @@ pmm_init(void) {
 //get_pte - get pte and return the kernel virtual address of this pte for la
 //        - if the PT contians this pte didn't exist, alloc a page for PT
 // parameter:
-//  pgdir:  the kernel virtual base address of PDT
+//  pgdir:  the kernel virtual base address of PDT(虽然参数类型是pde_t,但是pgdir应该是PDT的基址,而不是PDE的地址!)
 //  la:     the linear address need to map
 //  create: a logical value to decide if alloc a page for PT
 // return vaule: the kernel virtual address of this pte
@@ -372,6 +372,26 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+    pde_t *pdep=&pgdir[PDX(la)];             // 1.获取la对应页目录表项
+    if((*pdep & PTE_P) == 0){                // 2.如果相与为0,说明页目录项对应的二级页表不存在,说明需要分配(entry.S中初始化时就是几乎全部为0)
+        if(!create) return NULL;
+        else{                                // 3.确定要分配二级页表
+            struct Page* page=alloc_page();  //   给对应二级页表分配物理页空间 => 如何保证二级页表在虚拟地址0xFAC00000往上???
+            if(page==NULL) return NULL;
+            set_page_ref(page,1);            // 4.设置当前页(页表)的引用,只要这个页被映射了一次,引用计数必须加1
+            uintptr_t pa = page2pa(page);    // 5.获取物理页对应的物理地址(实际上是物理页号)
+            memset(KADDR(pa),0,PGSIZE);      // 6.新申请的物理页全部设为0,,因为这个页代表的虚拟地址都没有被映射
+            *pdep=pa|PTE_U|PTE_W|PTE_P;      // 7.设置当前二级页表对应页目录表项(二级页表的物理页号+标志位)
+        }
+    }
+    /**
+     * 注:ucore中,一级页表的页表项存储二级页表的物理页号,二级页表的页表项存储数据的物理页号
+     *    PDE_ADDR(*pdep)是计算当前要查找的二级页表的物理地址
+     *    KADDR(PDE_ADDR(*pdep))是计算要查找的二级页表的内核虚拟地址
+     *    ((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)]是获取la对应的二级页表项
+     *    最后取地址& 是获取la对应二级页表项的指针!
+     **/
+    return &(((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)]); // 8.返回虚拟地址la对应的页表项
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -417,6 +437,13 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+    if(*ptep & PTE_P){                       // 1.检查确认这个页表项存在(即页表项对应的物理内存页存在)
+        struct Page* page=pte2page(*ptep);   // 2.获取对应物理内存页
+        int ref=page_ref_dec(page);          // 3.减少物理页引用计数
+        if(ref<=0) free_page(page);          // 4.释放引用计数为0的物理页
+        *ptep=0;                             // 5.清空这个二级页表项
+        tlb_invalidate(pgdir,la);            // 6.刷新tlb
+    }
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte
@@ -469,8 +496,8 @@ tlb_invalidate(pde_t *pgdir, uintptr_t la) {
 // pgdir_alloc_page - call alloc_page & page_insert functions to 
 //                  - allocate a page size memory & setup an addr map
 //                  - pa<->la with linear address la and the PDT pgdir
-struct Page *
-pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
+// 注意:虽然参数类型为pde_t,但是pgdir应该是整个页目录表的基址,而不是某个页目录项的地址
+struct Page * pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
     struct Page *page = alloc_page();
     if (page != NULL) {
         if (page_insert(pgdir, page, la, perm) != 0) {

@@ -102,8 +102,8 @@ struct Page {
     uint32_t flags;                 // array of flags that describe the status of the page frame
     unsigned int property;          // the num of free block, used in first fit pm manager
     list_entry_t page_link;         // free list link
-    list_entry_t pra_page_link;     // used for pra (page replace algorithm)
-    uintptr_t pra_vaddr;            // used for pra (page replace algorithm)
+    list_entry_t pra_page_link;     // used for pra (page replace algorithm) => 链接已访问页的双向链表,这个项指向当前结点,加入链表时采用头插法!!
+    uintptr_t pra_vaddr;            // used for pra (page replace algorithm) => 用于记录这个物理页对应的虚拟页的起始地址
 };
 
 /* Flags describing the status of a page frame */

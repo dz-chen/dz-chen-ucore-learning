@@ -39,6 +39,13 @@ struct context {
 
 extern list_entry_t proc_list;
 
+/***********************************************************************
+ *                             PCB的结构体
+ * 0.线程是调度的基本单位,ucore中proc_struct其实就是TCB
+ * 1.注意context与tf的区别?
+ *  
+ * 
+ * **********************************************************************/
 struct proc_struct {
     enum proc_state state;                      // Process state
     int pid;                                    // Process ID
@@ -47,9 +54,9 @@ struct proc_struct {
     volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
     struct proc_struct *parent;                 // the parent process
     struct mm_struct *mm;                       // Process's memory management field
-    struct context context;                     // Switch here to run process
+    struct context context;                     // Switch here to run process => 上下文主要是指保存的(上次执行时的)现场寄存器信息
     struct trapframe *tf;                       // Trap frame for current interrupt
-    uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
+    uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT) => mm中的pgdir也是PDT的基址
     uint32_t flags;                             // Process flag
     char name[PROC_NAME_LEN + 1];               // Process name
     list_entry_t list_link;                     // Process link list 

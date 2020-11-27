@@ -38,6 +38,8 @@ kern_init(void) {
     idt_init();                 // init interrupt descriptor table
 
     vmm_init();                 // init virtual memory management
+
+    // 进程相关的初始化 => 本实验主要是初始化idleproc、initproc
     proc_init();                // init process table
     
     ide_init();                 // init ide devices
@@ -50,6 +52,7 @@ kern_init(void) {
     // user/kernel mode switch test
     //lab1_switch_test();
     
+    //开始进行线程调度
     cpu_idle();                 // run idle process
 }
 

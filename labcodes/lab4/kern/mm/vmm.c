@@ -361,38 +361,72 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
-#if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
-    ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
-    if (*ptep == 0) {
-                            //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+    #if 0
+        /*LAB3 EXERCISE 1: YOUR CODE*/
+        ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+        if (*ptep == 0) {
+                                //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 
+        }
+        else {
+        /*LAB3 EXERCISE 2: YOUR CODE
+        * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
+        * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
+        *
+        *  Some Useful MACROs and DEFINEs, you can use them in below implementation.
+        *  MACROs or Functions:
+        *    swap_in(mm, addr, &page) : alloc a memory page, then according to the swap entry in PTE for addr,
+        *                               find the addr of disk page, read the content of disk page into this memroy page
+        *    page_insert ： build the map of phy addr of an Page with the linear addr la
+        *    swap_map_swappable ： set the page swappable
+        */
+            if(swap_init_ok) {
+                struct Page *page=NULL;
+                                        //(1）According to the mm AND addr, try to load the content of right disk page
+                                        //    into the memory which page managed.
+                                        //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
+                                        //(3) make the page swappable.
+            }
+            else {
+                cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+                goto failed;
+            }
     }
-    else {
-    /*LAB3 EXERCISE 2: YOUR CODE
-    * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
-    * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
-    *
-    *  Some Useful MACROs and DEFINEs, you can use them in below implementation.
-    *  MACROs or Functions:
-    *    swap_in(mm, addr, &page) : alloc a memory page, then according to the swap entry in PTE for addr,
-    *                               find the addr of disk page, read the content of disk page into this memroy page
-    *    page_insert ： build the map of phy addr of an Page with the linear addr la
-    *    swap_map_swappable ： set the page swappable
-    */
+    #endif
+    
+    /************************* LAB3 EXERCISE 1 *****************************/
+    // (1)找到addr对应的pte.如果pte所在的页表不存在,则创建页表 => 详看get_pte
+    ptep=get_pte(boot_pgdir,addr,1);     //boot_pgdir也可改为mm->pgdir,因为mm->pgdir就是初始化为boot_pgdir
+    if(ptep==NULL){
+        cprintf("err at vmm.c/do_pgfault():get_pte failed!");
+        goto failed;
+    }
+    // (2)如果虚拟地址没有映射到物理地址,分配一个物理页面并完成映射 (对于虚拟地址映射到物理地址的情况,应该是不会进入的do_pgfault的)
+    if(*ptep==0){
+        struct Page* pg=pgdir_alloc_page(boot_pgdir,addr,perm);  //  //boot_pgdir也可改为mm->pgdir
+        if(pg==NULL){
+            cprintf("err at vmm.c/do_pgfault():pgdir_alloc_page failed!");
+            goto failed;
+        }
+    }
+
+    /************************* LAB3 EXERCISE 2 *****************************/
+    else{        // 接LAB3 EXERCISE 1 (2); 如果虚拟地址映射到的是磁盘地址,需要从磁盘将页加载到内存     
         if(swap_init_ok) {
             struct Page *page=NULL;
-                                    //(1）According to the mm AND addr, try to load the content of right disk page
-                                    //    into the memory which page managed.
-                                    //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
-                                    //(3) make the page swappable.
+            // (1)从磁盘加载数据到内存
+            swap_in(mm,addr,&page);       //注意传入双指针 => 自动分配内存页,读取磁盘上的页到物理内存
+            // (2)建立上一步分配的物理内存页与虚拟地址的映射关系
+            page_insert(mm->pgdir,page,addr,perm);
+            // (3)设置页可交换
+            swap_map_swappable(mm,addr,page,1);
+            page->pra_vaddr=addr;
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
             goto failed;
         }
-   }
-#endif
+    }
    ret = 0;
 failed:
     return ret;

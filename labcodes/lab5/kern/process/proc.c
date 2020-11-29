@@ -103,12 +103,32 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+    // 这里只是做一个简单的、最基本的初始化; 部分字段需要返回后根据不同线程类型进程初始化
+    proc->state=PROC_UNINIT;
+    proc->pid=-1;
+    proc->runs=0;
+    proc->kstack=0;             //因线程类型而异:idleproc直接使用bootstack; 而其他线程必须动态分配
+    proc->need_resched=0; 
+    proc->parent=NULL;
+    proc->mm=NULL;
+    memset(&(proc->context), 0, sizeof(struct context));
+    proc->tf=NULL;
+    proc->cr3=boot_cr3;         // PDT的基址
+    proc->flags=0;
+    memset(proc->name, 0, sizeof(PROC_NAME_LEN));  // 自动加结尾符
+
+
+
      //LAB5 YOUR CODE : (update LAB4 steps)
     /*
      * below fields(add in LAB5) in proc_struct need to be initialized	
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
+    proc->wait_state = 0;
+    proc->cptr = NULL;
+    proc->optr = NULL;
+    proc->yptr =  NULL;
     }
     return proc;
 }
@@ -395,7 +415,44 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+    // // 1.创建一个pcb(tcb)
+    // proc=alloc_proc();
+    // if(proc==NULL){
+    //      panic("do_fork:alloc_proc failed.\n");
+    //      goto bad_fork_cleanup_proc;
+    // }
+    // // 2.为子线程分配内核栈
+    // if(setup_kstack(proc)<0){
+    //      panic("do_fork:setup_kstack failed.\n");
+    //      goto bad_fork_cleanup_kstack;
+    // }
+    // // 3.复制或共享内存管理结构mm
+    // copy_mm(clone_flags,proc);       //lab4不需要使用
+    // // 4.设置tf & context
+    // copy_thread(proc,stack,tf);      // 第二个参数esp就是父进程的栈指针; 传入0就是创建内核线程
+    
+    // /*******************************************************
+    //  *              5.新线程插入双向链表和hash表
+    //  * 1.理解intr_flag的作用?
+    //  * 
+    //  * ****************************************************/
+    // bool intr_flag;
+    // local_intr_save(intr_flag);
+    // {
+    //     proc->pid=get_pid();
+    //     hash_proc(proc);
+    //     list_add(&proc_list,&(proc->list_link));
+    //     nr_process++;
+    // }
+    // local_intr_save(intr_flag);
+    // // 6.使子进程可运行
+    // wakeup_proc(proc);
+    // // 7.设置返回值(子线程id)
+    // ret=proc->pid;
 
+
+
+    
 	//LAB5 YOUR CODE : (update LAB4 steps)
    /* Some Functions
     *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
@@ -403,7 +460,43 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
-	
+    // 1.创建一个pcb(tcb)
+    proc=alloc_proc();
+    if(proc==NULL){
+         panic("do_fork:alloc_proc failed.\n");
+         goto bad_fork_cleanup_proc;
+    }
+    proc->parent = current;                 // lab5补充内容,设置父进程
+    assert(current->wait_state == 0);
+    // 2.为子线程分配内核栈
+    if(setup_kstack(proc)<0){
+         panic("do_fork:setup_kstack failed.\n");
+         goto bad_fork_cleanup_kstack;
+    }
+    // 3.复制或共享内存管理结构mm
+    copy_mm(clone_flags,proc);       //lab4不需要使用
+    // 4.设置tf & context
+    copy_thread(proc,stack,tf);      // 第二个参数esp就是父进程的栈指针; 传入0就是创建内核线程
+    
+    /*******************************************************
+     *              5.新线程插入双向链表和hash表
+     * 1.理解intr_flag的作用?
+     * 
+     * ****************************************************/
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid=get_pid();
+        hash_proc(proc);
+        // list_add(&proc_list,&(proc->list_link));
+        // nr_process++;
+        set_links(proc);        // lab5补充
+    }
+    local_intr_save(intr_flag);
+    // 6.使子进程可运行
+    wakeup_proc(proc);
+    // 7.设置返回值(子线程id)
+    ret=proc->pid;
 fork_out:
     return ret;
 
@@ -493,7 +586,7 @@ load_icode(unsigned char *binary, size_t size) {
     }
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
-    //(3.1) get the file header of the bianry program (ELF format)
+    //(3.1) get the file header of the bianry program (ELF format) => 定义见libs/elf.h
     struct elfhdr *elf = (struct elfhdr *)binary;
     //(3.2) get the entry of the program section headers of the bianry program (ELF format)
     struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);
@@ -602,6 +695,13 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs=USER_CS;
+    tf->tf_ds=USER_DS;
+    tf->tf_es=USER_DS;
+    tf->tf_ss=USER_DS;        // 特权级切换需要修改ss、esp
+    tf->tf_esp=USTACKTOP;
+    tf->tf_eip=elf->e_entry;  // 程序入口
+    tf->tf_eflags=FL_IF;      // 使能中断
     ret = 0;
 out:
     return ret;
@@ -632,9 +732,9 @@ do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
     memcpy(local_name, name, len);
 
     if (mm != NULL) {
-        lcr3(boot_cr3);
+        lcr3(boot_cr3);                 // cr保存页目录表的物理地址
         if (mm_count_dec(mm) == 0) {
-            exit_mmap(mm);
+            exit_mmap(mm);              
             put_pgdir(mm);
             mm_destroy(mm);
         }
@@ -740,8 +840,9 @@ do_kill(int pid) {
 }
 
 // kernel_execve - do SYS_exec syscall to exec a user program called by user_main kernel_thread
-static int
-kernel_execve(const char *name, unsigned char *binary, size_t size) {
+// 此函数整理出参数,然后调用系统调用SYS_exec
+// binary:代码的起始位置;  size:代码大小
+static int kernel_execve(const char *name, unsigned char *binary, size_t size) {
     int ret, len = strlen(name);
     asm volatile (
         "int %1;"
@@ -772,10 +873,9 @@ kernel_execve(const char *name, unsigned char *binary, size_t size) {
 #define KERNEL_EXECVE2(x, xstart, xsize)        __KERNEL_EXECVE2(x, xstart, xsize)
 
 // user_main - kernel thread used to exec a user program
-static int
-user_main(void *arg) {
+static int user_main(void *arg) {
 #ifdef TEST
-    KERNEL_EXECVE2(TEST, TESTSTART, TESTSIZE);
+    KERNEL_EXECVE2(TEST, TESTSTART, TESTSIZE);  // 最终调用kernel_execve函数
 #else
     KERNEL_EXECVE(exit);
 #endif
@@ -783,8 +883,7 @@ user_main(void *arg) {
 }
 
 // init_main - the second kernel thread used to create user_main kernel threads
-static int
-init_main(void *arg) {
+static int init_main(void *arg) {
     size_t nr_free_pages_store = nr_free_pages();
     size_t kernel_allocated_store = kallocated();
 

@@ -375,6 +375,26 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+    pde_t *pdep=&pgdir[PDX(la)];             // 1.获取la对应页目录表项
+    if((*pdep & PTE_P) == 0){                // 2.如果相与为0,说明页目录项对应的二级页表不存在,说明需要分配(entry.S中初始化时就是几乎全部为0)
+        if(!create) return NULL;
+        else{                                // 3.确定要分配二级页表
+            struct Page* page=alloc_page();  //   给对应二级页表分配物理页空间 => 如何保证二级页表在虚拟地址0xFAC00000往上???
+            if(page==NULL) return NULL;
+            set_page_ref(page,1);            // 4.设置当前页(页表)的引用,只要这个页被映射了一次,引用计数必须加1
+            uintptr_t pa = page2pa(page);    // 5.获取物理页对应的物理地址(实际上是物理页号)
+            memset(KADDR(pa),0,PGSIZE);      // 6.新申请的物理页全部设为0,,因为这个页代表的虚拟地址都没有被映射
+            *pdep=pa|PTE_U|PTE_W|PTE_P;      // 7.设置当前二级页表对应页目录表项(二级页表的物理页号+标志位)
+        }
+    }
+    /**
+     * 注:ucore中,一级页表的页表项存储二级页表的物理页号,二级页表的页表项存储数据的物理页号
+     *    PDE_ADDR(*pdep)是计算当前要查找的二级页表的物理地址
+     *    KADDR(PDE_ADDR(*pdep))是计算要查找的二级页表的内核虚拟地址
+     *    ((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)]是获取la对应的二级页表项
+     *    最后取地址& 是获取la对应二级页表项的指针!
+     **/
+    return &(((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)]); // 8.返回虚拟地址la对应的页表项
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -420,10 +440,16 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+    if(*ptep & PTE_P){                       // 1.检查确认这个页表项存在(即页表项对应的物理内存页存在)
+        struct Page* page=pte2page(*ptep);   // 2.获取对应物理内存页
+        int ref=page_ref_dec(page);          // 3.减少物理页引用计数
+        if(ref<=0) free_page(page);          // 4.释放引用计数为0的物理页
+        *ptep=0;                             // 5.清空这个二级页表项
+        tlb_invalidate(pgdir,la);            // 5.刷新tlb
+    }
 }
 
-void
-unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
+void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
     assert(start % PGSIZE == 0 && end % PGSIZE == 0);
     assert(USER_ACCESS(start, end));
 
@@ -501,6 +527,10 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
          * (4) build the map of phy addr of  nage with the linear addr start
          */
+        void * src_kvaddr = page2kva(page);
+        void * dst_kvaddr = page2kva(npage);
+        memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+        ret = page_insert(to, npage, start, perm);  // 建立一个新page的物理地址和线性地址的映射
         assert(ret == 0);
         }
         start += PGSIZE;

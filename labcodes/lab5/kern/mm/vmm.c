@@ -40,8 +40,7 @@ static void check_vma_struct(void);
 static void check_pgfault(void);
 
 // mm_create -  alloc a mm_struct & initialize it.
-struct mm_struct *
-mm_create(void) {
+struct mm_struct *mm_create(void) {
     struct mm_struct *mm = kmalloc(sizeof(struct mm_struct));
 
     if (mm != NULL) {
@@ -209,8 +208,9 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
     return 0;
 }
 
-void
-exit_mmap(struct mm_struct *mm) {
+
+/* 删除这个映射 */
+void exit_mmap(struct mm_struct *mm) {
     assert(mm != NULL && mm_count(mm) == 0);
     pde_t *pgdir = mm->pgdir;
     list_entry_t *list = &(mm->mmap_list), *le = list;
@@ -493,6 +493,42 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
+
+    /************************* LAB3 EXERCISE 1 *****************************/
+    // (1)找到addr对应的pte.如果pte所在的页表不存在,则创建页表 => 详看get_pte
+    ptep=get_pte(boot_pgdir,addr,1);     //boot_pgdir也可改为mm->pgdir,因为mm->pgdir就是初始化为boot_pgdir
+    if(ptep==NULL){
+        cprintf("err at vmm.c/do_pgfault():get_pte failed!");
+        goto failed;
+    }
+    // (2)如果虚拟地址没有映射到物理地址,分配一个物理页面并完成映射 (对于虚拟地址映射到物理地址的情况,应该是不会进入的do_pgfault的)
+    if(*ptep==0){
+        struct Page* pg=pgdir_alloc_page(boot_pgdir,addr,perm);  //  //boot_pgdir也可改为mm->pgdir
+        if(pg==NULL){
+            cprintf("err at vmm.c/do_pgfault():pgdir_alloc_page failed!");
+            goto failed;
+        }
+    }
+
+    /************************* LAB3 EXERCISE 2 *****************************/
+    else{        // 接LAB3 EXERCISE 1 (2); 如果虚拟地址映射到的是磁盘地址,需要从磁盘将页加载到内存     
+        if(swap_init_ok) {
+            struct Page *page=NULL;
+            // (1)从磁盘加载数据到内存
+            swap_in(mm,addr,&page);       //注意传入双指针 => 自动分配内存页,读取磁盘上的页到物理内存
+            // (2)建立上一步分配的物理内存页与虚拟地址的映射关系
+            page_insert(mm->pgdir,page,addr,perm);
+            // (3)设置页可交换
+            swap_map_swappable(mm,addr,page,1);
+            page->pra_vaddr=addr;
+        }
+        else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+        }
+    }
+
+    
    ret = 0;
 failed:
     return ret;

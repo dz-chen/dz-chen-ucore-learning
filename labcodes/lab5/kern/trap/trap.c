@@ -56,6 +56,24 @@ idt_init(void) {
      /* LAB5 YOUR CODE */ 
      //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
      //so you should setup the syscall interrupt gate in here
+    // 1.声明中断服务例程的入口地址(不是描述符表!!),它定义在vetors.S中 => .globl __vectors(见./vectors.S,由tools/vectors.c生成)
+    extern uintptr_t __vectors[];      // uintptr_t即unsigned int => 其中每个元素,就是一个中断服务例程的入口地址
+
+    // 2.填充IDT
+    // 2.1 ... 如何解释段选择子、istrap这样设置的原因??
+    for(size_t i=0;i<256;i++){
+        int istrap=0;                   // 是否陷阱 => 否,会关中断; 但是区别不大,也可不这样设置
+        int sel=GD_KTEXT;               // 段选择子;
+        int off=__vectors[i];           // 存储的基址在代码段中的偏移; 段偏移与eip对应
+        int dpl=DPL_KERNEL;             // 系统调用中断T_SYSCALL使用特权级为3,其他全为0
+        SETGATE(idt[i],istrap,sel,off,dpl);         // 宏,见mmu.h
+    }
+    // 2.2 处理存在特权级切换的特殊情况,这里选择中断号121系统调用
+    // 系统调用的权限仅为用户权限,理由 ??
+    SETGATE(idt[T_SWITCH_TOK],0,GD_KTEXT,__vectors[T_SWITCH_TOK],DPL_USER);
+
+    // 3.加载idt的地址到idtr; 从idt_pd处加载
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -223,8 +241,12 @@ trap_dispatch(struct trapframe *tf) {
         /* you should upate you lab1 code (just add ONE or TWO lines of code):
          *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
          */
-  
+        ticks++;
+        if(ticks % TICK_NUM ==0){
+            print_ticks();
+        }
         break;
+
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
         cprintf("serial [%03d] %c\n", c, c);

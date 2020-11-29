@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <ulib.h>
 
+/********************************************************
+ *              主要是对一些系统调用的包装
+ * *****************************************************/
 void
 exit(int error_code) {
     sys_exit(error_code);
@@ -35,8 +38,7 @@ kill(int pid) {
     return sys_kill(pid);
 }
 
-int
-getpid(void) {
+int getpid(void) {
     return sys_getpid();
 }
 

@@ -79,6 +79,7 @@ mm_count_inc(struct mm_struct *mm) {
     return mm->mm_count;
 }
 
+/* 共享mm结构的进程数减一 */
 static inline int
 mm_count_dec(struct mm_struct *mm) {
     mm->mm_count -= 1;

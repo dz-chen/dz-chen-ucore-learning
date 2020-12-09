@@ -65,6 +65,7 @@ sys_pgdir(uint32_t arg[]) {
     return 0;
 }
 
+// 获取当前时钟
 static int
 sys_gettime(uint32_t arg[]) {
     return (int)ticks;

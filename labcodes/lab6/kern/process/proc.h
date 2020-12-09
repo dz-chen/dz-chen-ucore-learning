@@ -9,8 +9,10 @@
 
 
 // process's state in his life cycle
+// ucore 进程状态比较简单,注意与常见的三态、五态、七态模型不同!,没有挂起状态
+// 这里就绪进程与执行进程共享同一状态PROC_RUNNABLE,但是执行进程不会放入就绪队列run_queue
 enum proc_state {
-    PROC_UNINIT = 0,  // uninitialized
+    PROC_UNINIT = 0,  // uninitialized, 分配了PCB,但尚未初始化
     PROC_SLEEPING,    // sleeping
     PROC_RUNNABLE,    // runnable(maybe running)
     PROC_ZOMBIE,      // almost dead, and wait parent proc to reclaim his resource
@@ -43,7 +45,7 @@ extern list_entry_t proc_list;
 struct proc_struct {
     enum proc_state state;                      // Process state
     int pid;                                    // Process ID
-    int runs;                                   // the running times of Proces
+    int runs;                                   // the running times of Proces => 进程被调度的次数
     uintptr_t kstack;                           // Process kernel stack
     volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
     struct proc_struct *parent;                 // the parent process
@@ -58,9 +60,10 @@ struct proc_struct {
     int exit_code;                              // exit code (be sent to parent proc)
     uint32_t wait_state;                        // waiting state
     struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-    struct run_queue *rq;                       // running queue contains Process
-    list_entry_t run_link;                      // the entry linked in run queue
-    int time_slice;                             // time slice for occupying the CPU
+    // 为进程调度补充的成员
+    struct run_queue *rq;                       // running queue contains Process   => 目前对ucore而言,所有就绪进程在同一个队列
+    list_entry_t run_link;                      // the entry linked in run queue    => 将这个进程与就绪队列连接起来
+    int time_slice;                             // time slice for occupying the CPU => 时间片
     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process 
     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)

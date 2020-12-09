@@ -7,8 +7,8 @@
 
 .text
 .globl kern_entry
-kern_entry:
-    # 1.load pa of boot pgdir => 将pgdir的地址加载到cr3寄存器,即设置页目录表、设置第一个页表
+kern_entry:                      # 整个内核的真正入口,在链接脚本中指定(见kernel.ld)
+    # 1.load pa of boot pgdir => 将pgdir的物理地址加载到cr3寄存器
     movl $REALLOC(__boot_pgdir), %eax  # __boot_pgdir是页目录表的虚拟地址;REALLOC宏将其转换为在内核中的相对地址
     movl %eax, %cr3                    # 将页目录表(一级页表)的起始地址存入cr3寄存器
 
@@ -57,6 +57,7 @@ bootstacktop:
 # These page directory table and page table can be reused!
 # 此页目录表,暂时只填充了两个有意义的表项:
 #   第一个有意义的页目录表项,即第一个页目录表项,它对应虚拟地址0-4MB:指向/映射第一个页表__boot_pt1
+#   中间填充了很多页目录表项,他们没有意义,只是占用空间
 #   第二个有意义的页目录表项,即KERNBASE处,它对应虚拟地址KERNBASE~KERNBASE+4MB:同样指向/映射第一个页表__boot_pt1
 #   所以,虚拟地址的0~4MB以及KERNBASE~KERNBASE+4MB都映射到同一段物理内存(0~4MB)
 .section .data.pgdir  # .section表示定义一个段

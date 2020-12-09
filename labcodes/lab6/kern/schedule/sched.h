@@ -36,6 +36,7 @@ struct sched_class {
      */
 };
 
+// 存放就绪队列,不包括正在执行的进程(虽然就绪进程与执行进程共享同一状态PROC_RUNNABLE)
 struct run_queue {
     list_entry_t run_list;
     unsigned int proc_num;

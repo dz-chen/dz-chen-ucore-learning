@@ -10,6 +10,8 @@ RR_init(struct run_queue *rq) {
     rq->proc_num = 0;
 }
 
+
+// 进程加入可执行队列(进程与可执行队列通过run_list成员联系)
 static void
 RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
     assert(list_empty(&(proc->run_link)));
@@ -37,6 +39,7 @@ RR_pick_next(struct run_queue *rq) {
     return NULL;
 }
 
+// 减少当前进程可执行时间
 static void
 RR_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
     if (proc->time_slice > 0) {

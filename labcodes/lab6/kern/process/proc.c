@@ -87,38 +87,61 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
-    //LAB4:EXERCISE1 YOUR CODE
-    /*
-     * below fields in proc_struct need to be initialized
-     *       enum proc_state state;                      // Process state
-     *       int pid;                                    // Process ID
-     *       int runs;                                   // the running times of Proces
-     *       uintptr_t kstack;                           // Process kernel stack
-     *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
-     *       struct proc_struct *parent;                 // the parent process
-     *       struct mm_struct *mm;                       // Process's memory management field
-     *       struct context context;                     // Switch here to run process
-     *       struct trapframe *tf;                       // Trap frame for current interrupt
-     *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
-     *       uint32_t flags;                             // Process flag
-     *       char name[PROC_NAME_LEN + 1];               // Process name
-     */
-     //LAB5 YOUR CODE : (update LAB4 steps)
-    /*
-     * below fields(add in LAB5) in proc_struct need to be initialized	
-     *       uint32_t wait_state;                        // waiting state
-     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-	 */
-     //LAB6 YOUR CODE : (update LAB5 steps)
-    /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
-     *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-     *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-     *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-     */
+        //LAB4:EXERCISE1 YOUR CODE
+        /*
+        * below fields in proc_struct need to be initialized
+        *       enum proc_state state;                      // Process state
+        *       int pid;                                    // Process ID
+        *       int runs;                                   // the running times of Proces
+        *       uintptr_t kstack;                           // Process kernel stack
+        *       volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
+        *       struct proc_struct *parent;                 // the parent process
+        *       struct mm_struct *mm;                       // Process's memory management field
+        *       struct context context;                     // Switch here to run process
+        *       struct trapframe *tf;                       // Trap frame for current interrupt
+        *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
+        *       uint32_t flags;                             // Process flag
+        *       char name[PROC_NAME_LEN + 1];               // Process name
+        */
+        proc->state = PROC_UNINIT;
+        proc->pid = -1;
+        proc->runs = 0;
+        proc->kstack = 0;
+        proc->need_resched = 0;
+        proc->parent = NULL;
+        proc->mm = NULL;
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;
+        proc->cr3 = boot_cr3;
+        proc->flags = 0;
+        memset(proc->name, 0, PROC_NAME_LEN);
+
+        //LAB5 YOUR CODE : (update LAB4 steps)
+        /*
+        * below fields(add in LAB5) in proc_struct need to be initialized	
+        *       uint32_t wait_state;                        // waiting state
+        *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
+        */
+        proc->wait_state = 0;
+        proc->cptr = proc->optr = proc->yptr = NULL;
+
+        //LAB6 YOUR CODE : (update LAB5 steps)
+        /*
+        * below fields(add in LAB6) in proc_struct need to be initialized
+        *     struct run_queue *rq;                       // running queue contains Process
+        *     list_entry_t run_link;                      // the entry linked in run queue
+        *     int time_slice;                             // time slice for occupying the CPU
+        *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
+        *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
+        *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
+        */
+        proc->rq=NULL;                          // 进程尚未加入就绪队列,无法与就绪队列联系,置为NULL
+        list_init(&(proc->run_link));           // 初始化一个列表元素,方便后续加入就绪队列
+                                                // 加入就绪队列就是将进程的run_link添加到rq的run_list中(见RR_enqueue())
+        proc->time_slice=0;
+        proc->lab6_run_pool.left=NULL;proc->lab6_run_pool.right=NULL;proc->lab6_run_pool.parent=NULL;
+        proc->lab6_stride=0;
+        proc->lab6_priority=0;
     }
     return proc;
 }
@@ -413,7 +436,34 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
-	
+    if ((proc = alloc_proc()) == NULL) {
+        goto fork_out;
+    }
+
+    proc->parent = current;
+    assert(current->wait_state == 0);
+
+    if (setup_kstack(proc) != 0) {
+        goto bad_fork_cleanup_proc;
+    }
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_kstack;
+    }
+    copy_thread(proc, stack, tf);
+
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        set_links(proc);
+
+    }
+    local_intr_restore(intr_flag);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
 fork_out:
     return ret;
 
@@ -612,6 +662,11 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
     ret = 0;
 out:
     return ret;
@@ -828,6 +883,7 @@ proc_init(void) {
         list_init(hash_list + i);
     }
 
+    // 1.idleproc (lab6之前没有)
     if ((idleproc = alloc_proc()) == NULL) {
         panic("cannot alloc idleproc.\n");
     }
@@ -841,6 +897,7 @@ proc_init(void) {
 
     current = idleproc;
 
+    // 2.initproc
     int pid = kernel_thread(init_main, NULL, 0);
     if (pid <= 0) {
         panic("create init_main failed.\n");
@@ -864,8 +921,8 @@ cpu_idle(void) {
 }
 
 //FOR LAB6, set the process's priority (bigger value will get more CPU time) 
-void
-lab6_set_priority(uint32_t priority)
+// 设置当前执行进程的优先级
+void lab6_set_priority(uint32_t priority)
 {
     if (priority == 0)
         current->lab6_priority = 1;

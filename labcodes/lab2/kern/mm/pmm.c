@@ -41,7 +41,7 @@ size_t npage = 0;
 
 // virtual address of boot-time page directory
 extern pde_t __boot_pgdir;           // 整数,页目表的虚拟地址; 定义见entry.S
-// 对这下面个写法有点晕....
+// boot_pgdir是页目录表的指针
 pde_t *boot_pgdir = &__boot_pgdir;   // 指向页目录表的指针 => *boot_pgdir就是__boot_pgdir,boot_pgdir[0]就是第一个表项
 
 // physical address of boot-time page directory
@@ -297,7 +297,7 @@ boot_alloc_page(void) {
 // 执行pmm_init开始,进入地址映射的第三个阶段(一二阶段见entry.S)
 void pmm_init(void) {
     // We've already enabled paging
-    boot_cr3 = PADDR(boot_pgdir);    // 为什么要存储cr3内容的地址???
+    boot_cr3 = PADDR(boot_pgdir);    // 将页目录表的物理地址写入boot_cr3
 
     //We need to alloc/free the physical memory (granularity is 4KB or other size). 
     //So a framework of physical memory manager (struct pmm_manager)is defined in pmm.h

@@ -122,7 +122,7 @@ struct Page {
     uint32_t flags;                 // array of flags that describe the status of the page frame => 见PG_property、 PG_reserved
     // 用于记录某连续物理内存空闲块的大小(个数),空闲块的第一个page才会使用这个字段 => 非第一个page需要设置为0!!
     unsigned int property;          // the num of free block, used in first fit pm manager
-    // 双向链表,连接连续的物理内存空闲块,空闲块的第一个page才会使用这个字段!! 连接的是空闲块而不是页!
+    // 双向链表,连接连续的物理内存空闲块,空闲块的第一个page才会使用这个字段!! 连接的是空闲块而不是页帧!
     list_entry_t page_link;         // free list link
 };
 

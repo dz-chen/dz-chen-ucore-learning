@@ -90,7 +90,7 @@ protcseg:
     # Set up the stack pointer and call into C. The stack region is from 0--start(0x7c00)
     movl $0x0, %ebp
     movl $start, %esp
-    call bootmain
+    call bootmain                           # 准备就绪后跳转到bootmain函数,然后再由bootmain将控制交给ucore        
 
     # If bootmain returns (it shouldn't), loop.
 spin:

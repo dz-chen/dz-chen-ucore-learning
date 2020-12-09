@@ -10,7 +10,7 @@
 
 OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)       /* cpu类型 */
-ENTRY(kern_entry)       /* 程序入口*/
+ENTRY(kern_entry)       /* 指定程序入口*/
 
 SECTIONS {
     /* Load the kernel at this address: "." means the current address */

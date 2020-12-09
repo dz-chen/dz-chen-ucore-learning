@@ -450,3 +450,51 @@ PDE(001) fac00000-fb000000 00400000 -rw
 - **为什么pmm.c中令vpd=0xFAFEB000,使得页目录表夹在4MB的页表虚拟地址空间的内部??**  
 ??
 
+- **对bootmain()函数的细节理解,如何解释下面问号处的问题?**  
+??
+```
+void
+bootmain(void) {
+    // read the 1st page off disk
+    readseg((uintptr_t)ELFHDR, SECTSIZE * 8, 0);  // 为什么从 0x10000开始 ??
+
+    // is this a valid ELF
+    if (ELFHDR->e_magic != ELF_MAGIC) {
+        goto bad;
+    }
+
+    struct proghdr *ph, *eph;
+
+    // load each program segment (ignores ph flags)
+    ph = (struct proghdr *)((uintptr_t)ELFHDR + ELFHDR->e_phoff);
+    eph = ph + ELFHDR->e_phnum;
+    for (; ph < eph; ph ++) {
+        // 注意&0xFFFFFF的作用 ??? => 这部分见bootmain.c
+        readseg(ph->p_va & 0xFFFFFF, ph->p_memsz, ph->p_offset);
+    }
+
+    // call the entry point from the ELF header
+    // note: does not return
+    ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
+
+bad:
+    outw(0x8A00, 0x8A00);
+    outw(0x8A00, 0x8E00);
+    /* do nothing */
+    while (1);
+}
+
+```
+
+- **bootmain中读取第一个page时,为什么是读取到虚拟/物理地址0x10000处?**  
+??
+
+
+- **cr3寄存器**  
+`存放页目录表的物理地址`;  
+同时,在ucore中,全局变量boot_cr3也用于记录页目录表的物理地址  
+
+- **实习指导书说lab2将ucore放到起始地址为0x100000的物理地址空间处,从哪里看出的?**  
+=> 见bootmain()函数中的注释  
+
+- ****

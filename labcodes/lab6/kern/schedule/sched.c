@@ -13,6 +13,7 @@ static struct sched_class *sched_class;
 
 static struct run_queue *rq;
 
+/****************** 调度框架,不涉及具体算法,任务交给sched_class *******************************/
 static inline void
 sched_class_enqueue(struct proc_struct *proc) {
     if (proc != idleproc) {
@@ -42,6 +43,8 @@ sched_class_proc_tick(struct proc_struct *proc) {
 
 static struct run_queue __rq;
 
+
+//绑定特定调度算法的调度类(sched_class),kern_init()中被调用
 void
 sched_init(void) {
     list_init(&timer_list);
@@ -75,23 +78,22 @@ wakeup_proc(struct proc_struct *proc) {
     local_intr_restore(intr_flag);
 }
 
-void
-schedule(void) {
+void schedule(void) {
     bool intr_flag;
     struct proc_struct *next;
-    local_intr_save(intr_flag);
+    local_intr_save(intr_flag);                 // 这个比较复杂,待学习
     {
         current->need_resched = 0;
-        if (current->state == PROC_RUNNABLE) {
+        if (current->state == PROC_RUNNABLE) {              //当前运行的进程放入就绪队列
             sched_class_enqueue(current);
         }
-        if ((next = sched_class_pick_next()) != NULL) {
+        if ((next = sched_class_pick_next()) != NULL) {     // 挑选下一个将要执行的继承,出队
             sched_class_dequeue(next);
         }
         if (next == NULL) {
             next = idleproc;
         }
-        next->runs ++;
+        next->runs ++;                        // 计数出队进程被调用次数,执行出队进程...
         if (next != current) {
             proc_run(next);
         }

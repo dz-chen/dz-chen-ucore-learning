@@ -1,6 +1,11 @@
 #ifndef __LIBS_SKEW_HEAP_H__
 #define __LIBS_SKEW_HEAP_H__
 
+/*****************************************************************
+ *             提供基本的优先队列数据结构(斜堆)
+ * **************************************************************/
+
+
 struct skew_heap_entry {
      struct skew_heap_entry *parent, *left, *right;
 };

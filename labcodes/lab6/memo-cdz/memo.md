@@ -78,7 +78,7 @@ static void RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
 暂略,待完成...
 
 # 练习2:实现Stride Scheduling调度算法
-
+已完成,详见default_sched_stride.c
 
 # 补充:进程调度概述
 ## 实验执行流程
@@ -300,8 +300,13 @@ libs/skew_heap.h,待学习!!
 - **就绪进程由run_queue队列组织,那么阻塞的进程如何组织的?**  
 ???
 
-- **尚未完全理解stride溢出的解决方法?**  
-???
+- **如何理解stride溢出的解决方法?**  
+先参考上文:"stride溢出问题"  
+根据proc.h,lab6_stride使用无符号数表示.即使无符号数溢出(以16位为例,65534+100 => 溢出,结果为无符号数98),也没有关系,因为比较大小时,使用符号数表示差(比如溢出后的和98与65535比较大小,98-65535 => 符号数99>0 => 仍然认为前者大于后者);所以`关键是要让这个差值(符号数)不溢出`,这就是BigStride的取值依据!  
+数的二进制表示知识可参考csapp第二章!
 
 - **如何理解local_intr_save(schedule.c中schedule()函数内使用)?**  
-???
+目的是关中断,从而实现同步!
+
+- **grade.sh这个脚本值得阅读?**  
+详见tools/grade.sh,尚未阅读!

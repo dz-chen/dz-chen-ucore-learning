@@ -38,11 +38,11 @@ struct sched_class {
 
 // 存放就绪队列,不包括正在执行的进程(虽然就绪进程与执行进程共享同一状态PROC_RUNNABLE)
 struct run_queue {
-    list_entry_t run_list;
+    list_entry_t run_list;             // 和就绪队列联系起来(run_list是就绪队列的入口),这个队列是双向链表
     unsigned int proc_num;
     int max_time_slice;
     // For LAB6 ONLY
-    skew_heap_entry_t *lab6_run_pool;
+    skew_heap_entry_t *lab6_run_pool;  // 类似于run_list,只是这里就绪队列组织成优先队列,专供stride算法使用!
 };
 
 void sched_init(void);

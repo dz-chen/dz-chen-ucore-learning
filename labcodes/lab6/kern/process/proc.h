@@ -64,7 +64,7 @@ struct proc_struct {
     struct run_queue *rq;                       // running queue contains Process   => 目前对ucore而言,所有就绪进程在同一个队列
     list_entry_t run_link;                      // the entry linked in run queue    => 将这个进程与就绪队列连接起来
     int time_slice;                             // time slice for occupying the CPU => 时间片
-    skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
+    skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool => 类似于run_link,只是这里是将进程与优先队列连接起来(stride算法使用!)
     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process 
     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
 };

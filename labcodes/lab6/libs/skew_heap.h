@@ -39,7 +39,7 @@ skew_heap_merge(skew_heap_entry_t *a, skew_heap_entry_t *b,
      else if (b == NULL) return a;
      
      skew_heap_entry_t *l, *r;
-     if (comp(a, b) == -1)
+     if (comp(a, b) == -1)              // a < b
      {
           r = a->left;
           l = skew_heap_merge(a->right, b, comp);
@@ -50,7 +50,7 @@ skew_heap_merge(skew_heap_entry_t *a, skew_heap_entry_t *b,
 
           return a;
      }
-     else
+     else                               // a >= b
      {
           r = b->left;
           l = skew_heap_merge(a, b->right, comp);

@@ -152,7 +152,7 @@ file_testfd(int fd, bool readable, bool writable) {
     return 1;
 }
 
-// open file
+// open file => 构建file结构,返回文件描述符
 int
 file_open(char *path, uint32_t open_flags) {
     bool readable = 0, writable = 0;

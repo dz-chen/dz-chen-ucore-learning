@@ -14,13 +14,13 @@ struct dirent;
 struct file {
     enum {
         FD_NONE, FD_INIT, FD_OPENED, FD_CLOSED,
-    } status;
-    bool readable;
-    bool writable;
-    int fd;
-    off_t pos;
-    struct inode *node;
-    int open_count;
+    } status;                   // 文件的状态
+    bool readable;              // 文件是否可读
+    bool writable;              // 文件是否可写
+    int fd;                     // 文件在filemap中的索引值
+    off_t pos;                  // 访问当前文件的位置
+    struct inode *node;         // 该文件对应的inode指针
+    int open_count;             // 文件被打开次数
 };
 
 void fd_array_init(struct file *fd_array);

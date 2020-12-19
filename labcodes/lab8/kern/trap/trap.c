@@ -190,77 +190,77 @@ trap_dispatch(struct trapframe *tf) {
     int ret=0;
 
     switch (tf->tf_trapno) {
-    case T_PGFLT:  //page fault
-        if ((ret = pgfault_handler(tf)) != 0) {
-            print_trapframe(tf);
-            if (current == NULL) {
-                panic("handle pgfault failed. ret=%d\n", ret);
-            }
-            else {
-                if (trap_in_kernel(tf)) {
-                    panic("handle pgfault failed in kernel mode. ret=%d\n", ret);
+        case T_PGFLT:  //page fault
+            if ((ret = pgfault_handler(tf)) != 0) {
+                print_trapframe(tf);
+                if (current == NULL) {
+                    panic("handle pgfault failed. ret=%d\n", ret);
                 }
-                cprintf("killed by kernel.\n");
-                panic("handle user mode pgfault failed. ret=%d\n", ret); 
+                else {
+                    if (trap_in_kernel(tf)) {
+                        panic("handle pgfault failed in kernel mode. ret=%d\n", ret);
+                    }
+                    cprintf("killed by kernel.\n");
+                    panic("handle user mode pgfault failed. ret=%d\n", ret); 
+                    do_exit(-E_KILLED);
+                }
+            }
+            break;
+        case T_SYSCALL:
+            syscall();
+            break;
+        case IRQ_OFFSET + IRQ_TIMER:
+    #if 0
+        LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
+        then you can add code here. 
+    #endif
+            /* LAB1 YOUR CODE : STEP 3 */
+            /* handle the timer interrupt */
+            /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
+            * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
+            * (3) Too Simple? Yes, I think so!
+            */
+            /* LAB5 YOUR CODE */
+            /* you should upate you lab1 code (just add ONE or TWO lines of code):
+            *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
+            */
+            /* LAB6 YOUR CODE */
+            /* you should upate you lab5 code
+            * IMPORTANT FUNCTIONS:
+            * sched_class_proc_tick
+            */         
+            /* LAB7 YOUR CODE */
+            /* you should upate you lab6 code
+            * IMPORTANT FUNCTIONS:
+            * run_timer_list
+            */
+            break;
+        case IRQ_OFFSET + IRQ_COM1:
+        case IRQ_OFFSET + IRQ_KBD:
+            // There are user level shell in LAB8, so we need change COM/KBD interrupt processing.
+            c = cons_getc();            // cons_getc很重要,看下去!!!
+            {
+                extern void dev_stdin_write(char c);
+                dev_stdin_write(c);
+            }
+            break;
+        //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
+        case T_SWITCH_TOU:
+        case T_SWITCH_TOK:
+            panic("T_SWITCH_** ??\n");
+            break;
+        case IRQ_OFFSET + IRQ_IDE1:
+        case IRQ_OFFSET + IRQ_IDE2:
+            /* do nothing */
+            break;
+        default:
+            print_trapframe(tf);
+            if (current != NULL) {
+                cprintf("unhandled trap.\n");
                 do_exit(-E_KILLED);
             }
-        }
-        break;
-    case T_SYSCALL:
-        syscall();
-        break;
-    case IRQ_OFFSET + IRQ_TIMER:
-#if 0
-    LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
-    then you can add code here. 
-#endif
-        /* LAB1 YOUR CODE : STEP 3 */
-        /* handle the timer interrupt */
-        /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
-         * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
-         * (3) Too Simple? Yes, I think so!
-         */
-        /* LAB5 YOUR CODE */
-        /* you should upate you lab1 code (just add ONE or TWO lines of code):
-         *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
-         */
-        /* LAB6 YOUR CODE */
-        /* you should upate you lab5 code
-         * IMPORTANT FUNCTIONS:
-	     * sched_class_proc_tick
-         */         
-        /* LAB7 YOUR CODE */
-        /* you should upate you lab6 code
-         * IMPORTANT FUNCTIONS:
-	     * run_timer_list
-         */
-        break;
-    case IRQ_OFFSET + IRQ_COM1:
-    case IRQ_OFFSET + IRQ_KBD:
-        // There are user level shell in LAB8, so we need change COM/KBD interrupt processing.
-        c = cons_getc();
-        {
-          extern void dev_stdin_write(char c);
-          dev_stdin_write(c);
-        }
-        break;
-    //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
-    case T_SWITCH_TOU:
-    case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
-        break;
-    case IRQ_OFFSET + IRQ_IDE1:
-    case IRQ_OFFSET + IRQ_IDE2:
-        /* do nothing */
-        break;
-    default:
-        print_trapframe(tf);
-        if (current != NULL) {
-            cprintf("unhandled trap.\n");
-            do_exit(-E_KILLED);
-        }
-        // in kernel, it must be a mistake
-        panic("unexpected trap in kernel.\n");
+            // in kernel, it must be a mistake
+            panic("unexpected trap in kernel.\n");
 
     }
 }

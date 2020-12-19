@@ -6,6 +6,12 @@
 #include <error.h>
 #include <unistd.h>
 
+/****************************************************************************
+ *                  文件操作的系统调用用户层接口
+ * 1.调用的sys_xxx位于./syscall.c,这里边再间接调用内核中的syscall.c中的系统调用
+ * **************************************************************************/
+
+
 int
 open(const char *path, uint32_t open_flags) {
     return sys_open(path, open_flags);

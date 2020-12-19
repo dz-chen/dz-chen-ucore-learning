@@ -37,6 +37,10 @@ void wakeup_queue(wait_queue_t *queue, uint32_t wakeup_flags, bool del);
 
 void wait_current_set(wait_queue_t *queue, wait_t *wait, uint32_t wait_state);
 
+
+/**
+ * 将wait从等待队列中删除
+ * */
 #define wait_current_del(queue, wait)                                       \
     do {                                                                    \
         if (wait_in_queue(wait)) {                                          \

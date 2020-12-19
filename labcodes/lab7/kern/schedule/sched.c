@@ -55,8 +55,9 @@ sched_init(void) {
     cprintf("sched class: %s\n", sched_class->name);
 }
 
-void
-wakeup_proc(struct proc_struct *proc) {
+
+// 唤醒进程
+void wakeup_proc(struct proc_struct *proc) {
     assert(proc->state != PROC_ZOMBIE);
     bool intr_flag;
     local_intr_save(intr_flag);
@@ -75,8 +76,7 @@ wakeup_proc(struct proc_struct *proc) {
     local_intr_restore(intr_flag);
 }
 
-void
-schedule(void) {
+void schedule(void) {
     bool intr_flag;
     struct proc_struct *next;
     local_intr_save(intr_flag);
@@ -99,9 +99,9 @@ schedule(void) {
     local_intr_restore(intr_flag);
 }
 
+/***************************************** 下为lab7添加 *****************************/
 // add timer to timer_list
-void
-add_timer(timer_t *timer) {
+void add_timer(timer_t *timer) {
     bool intr_flag;
     local_intr_save(intr_flag);
     {
@@ -123,8 +123,7 @@ add_timer(timer_t *timer) {
 }
 
 // del timer from timer_list
-void
-del_timer(timer_t *timer) {
+void del_timer(timer_t *timer) {
     bool intr_flag;
     local_intr_save(intr_flag);
     {
@@ -143,8 +142,9 @@ del_timer(timer_t *timer) {
 }
 
 // call scheduler to update tick related info, and check the timer is expired? If expired, then wakup proc
-void
-run_timer_list(void) {
+//仅在每次时钟中断时被调用 => 1.遍历所有定时器,唤醒部分阻塞的进程; 2.执行进程/线程调度
+//每次时钟段中断时被调用,被trap_dispatch()函数调用
+void run_timer_list(void) {
     bool intr_flag;
     local_intr_save(intr_flag);
     {

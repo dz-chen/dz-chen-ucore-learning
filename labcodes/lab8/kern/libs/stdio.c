@@ -46,9 +46,13 @@ cprintf(const char *fmt, ...) {
     return cnt;
 }
 
-/* cputchar - writes a single character to stdout */
-void
-cputchar(int c) {
+/**
+ * cputchar - writes a single character to stdout
+ * 将字符写到stdout
+ * stdout对应console设备,包括:串口、并口、CGA显示器
+ * => 即字符要写到这三个地方
+ **/
+void cputchar(int c) {
     cons_putc(c);
 }
 

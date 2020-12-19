@@ -9,6 +9,7 @@
 
 struct proc_struct;
 
+// 定时器 => 一个阻塞进程对应一个定时器
 typedef struct {
     unsigned int expires;       //the expire time
     struct proc_struct *proc;   //the proc wait in this timer. If the expire time is end, then this proc will be scheduled
@@ -18,7 +19,9 @@ typedef struct {
 #define le2timer(le, member)            \
 to_struct((le), timer_t, member)
 
+
 // init a timer
+// 初始化定时器(并加入定时器链表) => 它在expires之后唤醒进程proc
 static inline timer_t *
 timer_init(timer_t *timer, struct proc_struct *proc, int expires) {
     timer->expires = expires;

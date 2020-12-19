@@ -13,6 +13,12 @@
 #define TIMES  4 /* 吃4次饭 */
 #define SLEEP_TIME 10
 
+/******************************************************************
+ *          基于信号量的哲学家就餐问题
+ *          基于管程的哲学家就餐问题
+ * ****************************************************************/
+
+
 //-----------------philosopher problem using monitor ------------
 /*PSEUDO CODE :philosopher problem using semaphore
 system DINING_PHILOSOPHERS
@@ -73,11 +79,17 @@ void drop_chopsticks(int i)
    }
 
 */
+
+
+
+
+
+
 //---------- philosophers problem using semaphore ----------------------
-int state_sema[N]; /* 记录每个人状态的数组 */
+int state_sema[N]; /* 记录每个人状态的数组,共5人 */
 /* 信号量是一个特殊的整型变量 */
-semaphore_t mutex; /* 临界区互斥 */
-semaphore_t s[N]; /* 每个哲学家一个信号量 */
+semaphore_t mutex; /* 临界区互斥:互斥信号量,初始化为1 */
+semaphore_t s[N]; /* 每个哲学家一个信号量:同步信号量,初始化为0 */
 
 struct proc_struct *philosopher_proc_sema[N];
 
@@ -109,20 +121,22 @@ void phi_put_forks_sema(int i) /* i：哲学家号码从0到N-1 */
         up(&mutex); /* 离开临界区 */
 }
 
+
+// 每个哲学家都执行此函数
 int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 */
 {
     int i, iter=0;
     i=(int)arg;
     cprintf("I am No.%d philosopher_sema\n",i);
     while(iter++<TIMES)
-    { /* 无限循环 */
+    {   /* 无限循环 */
         cprintf("Iter %d, No.%d philosopher_sema is thinking\n",iter,i); /* 哲学家正在思考 */
         do_sleep(SLEEP_TIME);
-        phi_take_forks_sema(i); 
+        phi_take_forks_sema(i);           // 拿两把叉子
         /* 需要两只叉子，或者阻塞 */
         cprintf("Iter %d, No.%d philosopher_sema is eating\n",iter,i); /* 进餐 */
         do_sleep(SLEEP_TIME);
-        phi_put_forks_sema(i); 
+        phi_put_forks_sema(i);           // 放下叉子
         /* 把两把叉子同时放回桌子 */
     }
     cprintf("No.%d philosopher_sema quit\n",i);
@@ -205,6 +219,7 @@ void phi_put_forks_condvar(int i) {
         up(&(mtp->mutex));
 }
 
+
 //---------- philosophers using monitor (condition variable) ----------------------
 int philosopher_using_condvar(void * arg) { /* arg is the No. of philosopher 0~N-1*/
   
@@ -226,15 +241,23 @@ int philosopher_using_condvar(void * arg) { /* arg is the No. of philosopher 0~N
     return 0;    
 }
 
+
+
+
+
+/***************************** 对信号量、管程的测试程序  **********************************************/
+
+// 使用哲学家就餐问题进行检验
 void check_sync(void){
 
     int i;
 
-    //check semaphore
-    sem_init(&mutex, 1);
+    //check semaphore => 基于信号量的哲学家进餐问题
+    // 5个子进程并发执行philosopher_using_semaphore函数
+    sem_init(&mutex, 1);            // 互斥信号量,初始化为1
     for(i=0;i<N;i++){
-        sem_init(&s[i], 0);
-        int pid = kernel_thread(philosopher_using_semaphore, (void *)i, 0);
+        sem_init(&s[i], 0);         // 5个同步信号量,初始化为0
+        int pid = kernel_thread(philosopher_using_semaphore, (void *)i, 0);  // 5个线程对应5个哲学家
         if (pid <= 0) {
             panic("create No.%d philosopher_using_semaphore failed.\n");
         }
@@ -242,7 +265,7 @@ void check_sync(void){
         set_proc_name(philosopher_proc_sema[i], "philosopher_sema_proc");
     }
 
-    //check condition variable
+    //check condition variable => 基于管程的哲学家进餐问题
     monitor_init(&mt, N);
     for(i=0;i<N;i++){
         state_condvar[i]=THINKING;

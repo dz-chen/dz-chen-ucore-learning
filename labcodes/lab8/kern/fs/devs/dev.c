@@ -5,6 +5,11 @@
 #include <inode.h>
 #include <unistd.h>
 #include <error.h>
+/******************************************************************************
+ *                          对设备的一些操作
+ * 1.下面用到的device参数哪里来的 ??
+ * ***************************************************************************/
+
 
 /*
  * dev_open - Called for each open().
@@ -141,6 +146,8 @@ static const struct inode_ops dev_node_ops = {
     .vop_lookup                     = dev_lookup,
 };
 
+
+// 调用的是具体设备文件中的初始化程序,比如dev_init_stdout() => 见dev_stdout.c
 #define init_device(x)                                  \
     do {                                                \
         extern void dev_init_##x(void);                 \
@@ -151,16 +158,19 @@ static const struct inode_ops dev_node_ops = {
 void
 dev_init(void) {
    // init_device(null);
-    init_device(stdin);
+    init_device(stdin);             // 初始化各设备
     init_device(stdout);
     init_device(disk0);
 }
-/* dev_create_inode - Create inode for a vfs-level device. */
-struct inode *
-dev_create_inode(void) {
+/**
+ * dev_create_inode - Create inode for a vfs-level device. 
+ * 创建一个inode,并完成inode结点的初始化
+ * 被dev_init_xxx()调用,见dev_xxx.c
+ **/
+struct inode *dev_create_inode(void) {
     struct inode *node;
-    if ((node = alloc_inode(device)) != NULL) {
-        vop_init(node, &dev_node_ops, NULL);
+    if ((node = alloc_inode(device)) != NULL) {  // alloc_inode使用kmalloc分配一个inode空间; 并将node类型设置为device
+        vop_init(node, &dev_node_ops, NULL);     // 初始化inode节点(设置引用计数+1、设置inode操作(dev_node_ops)、设置抽象文件系统NULL)
     }
     return node;
 }

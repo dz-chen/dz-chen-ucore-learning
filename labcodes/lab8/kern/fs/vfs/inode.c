@@ -23,9 +23,9 @@ __alloc_inode(int type) {
 /* *
  * inode_init - initialize a inode structure
  * invoked by vop_init
+ * 初始化inode节点(设置inode操作(ops)、设置抽象的文件系统(fs)),然后将引用计数+1
  * */
-void
-inode_init(struct inode *node, const struct inode_ops *ops, struct fs *fs) {
+void inode_init(struct inode *node, const struct inode_ops *ops, struct fs *fs) {
     node->ref_count = 0;
     node->open_count = 0;
     node->in_ops = ops, node->in_fs = fs;

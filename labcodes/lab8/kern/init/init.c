@@ -44,6 +44,8 @@ kern_init(void) {
     
     ide_init();                 // init ide devices
     swap_init();                // init swap
+
+    // 初始化文件系统
     fs_init();                  // init fs
     
     clock_init();               // init clock interrupt

@@ -4,6 +4,11 @@
 #include <error.h>
 #include <assert.h>
 
+/***********************************************************************
+ *                      用于io的缓冲区  的一些操作
+ * *********************************************************************/
+
+
 /* 
  * iobuf_init - init io buffer struct.
  *                set up io_base to point to the buffer you want to transfer to, and set io_len to the length of buffer;
@@ -19,25 +24,27 @@ iobuf_init(struct iobuf *iob, void *base, size_t len, off_t offset) {
 }
 
 /* iobuf_move - move data  (iob->io_base ---> data OR  data --> iob->io.base) in memory
- * @copiedp:  the size of data memcopied
+ * copiedp:  the size of data memcopied
  *
  * iobuf_move may be called repeatedly on the same io to transfer
  * additional data until the available buffer space the io refers to
  * is exhausted.
+ * 将data移动到iob 或者 将iob中的数据移动到data
+ * len:最多复制多长数据; copiedp:实际复制了多长数据
  */
 int
 iobuf_move(struct iobuf *iob, void *data, size_t len, bool m2b, size_t *copiedp) {
-    size_t alen;
+    size_t alen;                                // 真实复制的数据长度
     if ((alen = iob->io_resid) > len) {
         alen = len;
     }
     if (alen > 0) {
         void *src = iob->io_base, *dst = data;
-        if (m2b) {
+        if (m2b) {                               // 如果是从data复制到iob
             void *tmp = src;
             src = dst, dst = tmp;
         }
-        memmove(dst, src, alen);
+        memmove(dst, src, alen);                // 这个move其实是复制
         iobuf_skip(iob, alen), len -= alen;
     }
     if (copiedp != NULL) {

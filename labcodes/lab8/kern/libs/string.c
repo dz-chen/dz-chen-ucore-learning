@@ -1,8 +1,10 @@
 #include <string.h>
 #include <kmalloc.h>
 
-char *
-strdup(const char *src) {
+/**
+ * 为新的字符串分配空间 => 复制 => 返回新字符串的指针
+ * */
+char *strdup(const char *src) {
     char *dst;
     size_t len = strlen(src);
     if ((dst = kmalloc(len + 1)) != NULL) {

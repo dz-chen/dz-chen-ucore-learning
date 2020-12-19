@@ -35,7 +35,7 @@
 #define SFS_TYPE_LINK                               3
 
 /*
- * On-disk superblock
+ * On-disk superblock, 超块(文件系统的第一个block),包含文件系统的基本信息
  */
 struct sfs_super {
     uint32_t magic;                                 /* magic number, should be SFS_MAGIC */
@@ -46,20 +46,20 @@ struct sfs_super {
 
 /* inode (on disk) */
 struct sfs_disk_inode {
-    uint32_t size;                                  /* size of the file (in bytes) */
-    uint16_t type;                                  /* one of SYS_TYPE_* above */
-    uint16_t nlinks;                                /* # of hard links to this file */
-    uint32_t blocks;                                /* # of blocks */
-    uint32_t direct[SFS_NDIRECT];                   /* direct blocks */
-    uint32_t indirect;                              /* indirect blocks */
-//    uint32_t db_indirect;                           /* double indirect blocks */
+    uint32_t size;                   // 如果inode表示常规文件,则size是文件大小
+    uint16_t type;                   // inode的文件类型
+    uint16_t nlinks;                 // 此inode的硬连接数
+    uint32_t blocks;                 // 此inode对应数据块的个数
+    uint32_t direct[SFS_NDIRECT];    // 此inode的直接数据块索引值(有SFS_NDIRECT个)
+    uint32_t indirect;               // 此inode的一级间接数据块索引值
+//    uint32_t db_indirect;          /* double indirect blocks */
 //   unused
 };
 
 /* file entry (on disk) */
 struct sfs_disk_entry {
-    uint32_t ino;                                   /* inode number */
-    char name[SFS_MAX_FNAME_LEN + 1];               /* file name */
+    uint32_t ino;                        // 目录项对应的文件/子目录索引节点所占数据块索引值(ucore直接取磁盘块号)
+    char name[SFS_MAX_FNAME_LEN + 1];    // 文件名
 };
 
 #define sfs_dentry_size                             \

@@ -4,19 +4,22 @@
 #include <list.h>
 
 typedef struct {
-    list_entry_t wait_head;
+    list_entry_t wait_head;            // wait_queue的队头
 } wait_queue_t;
 
 struct proc_struct;
 
+// 等待队列上的一个节点(通过wait_link与队列联系)
+// 可见,ucore实现中不止一个等待/阻塞队列; 而就绪队列只有一个!
 typedef struct {
-    struct proc_struct *proc;
-    uint32_t wakeup_flags;
-    wait_queue_t *wait_queue;
-    list_entry_t wait_link;
+    struct proc_struct *proc;           // 等待/阻塞进程
+    uint32_t wakeup_flags;              // 进程被放入等待队列的原因标记
+    wait_queue_t *wait_queue;           // 此wait_t结构所属的wait_queue
+    list_entry_t wait_link;             // 通过这个结点链接到对应的wait_queue
 } wait_t;
 
-#define le2wait(le, member)         \
+// 从等待队列的节点,转换到wait_t结构
+#define le2wait(le, member)         \   
     to_struct((le), wait_t, member)
 
 void wait_init(wait_t *wait, struct proc_struct *proc);

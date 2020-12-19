@@ -11,20 +11,25 @@
 #include <error.h>
 #include <assert.h>
 
-// device info entry in vdev_list 
+// device info entry in vdev_list  => 代表设备链表中的一个结点
 typedef struct {
     const char *devname;
-    struct inode *devnode;
+    // device通过devnode与inode关联; inode中则是_device_info成员与device关联
+    struct inode *devnode;         // 此设备对应的文件inode (即将此设备模型化为一个文件); 
     struct fs *fs;
-    bool mountable;
-    list_entry_t vdev_link;
+    bool mountable;                // 是否可挂载
+    list_entry_t vdev_link;        // 与设备链表的连接点
 } vfs_dev_t;
 
 #define le2vdev(le, member)                         \
     to_struct((le), vfs_dev_t, member)
 
+
+// 设备链表
 static list_entry_t vdev_list;     // device info list in vfs layer
-static semaphore_t vdev_list_sem;
+
+// 通过信号量实现vdev_list的锁!
+static semaphore_t vdev_list_sem; 
 
 static void
 lock_vdev_list(void) {
@@ -136,6 +141,8 @@ check_devname_conflict(const char *devname) {
 * If "mountable" is set, the device will be treated as one that expects
 * to have a filesystem mounted on it, and a raw device will be created
 * for direct access.
+* 为传入的参数创建一个vfs_dev_t,然后将其加入设备链表
+* 被vfs_add_dev调用
 */
 static int
 vfs_do_add(const char *devname, struct inode *devnode, struct fs *fs, bool mountable) {
@@ -147,17 +154,17 @@ vfs_do_add(const char *devname, struct inode *devnode, struct fs *fs, bool mount
 
     int ret = -E_NO_MEM;
     char *s_devname;
-    if ((s_devname = strdup(devname)) == NULL) {
+    if ((s_devname = strdup(devname)) == NULL) {        // 复制字符串(kern/libs/string.c)
         return ret;
     }
 
-    vfs_dev_t *vdev;
+    vfs_dev_t *vdev;                                    // 创建一个设备链表的节点
     if ((vdev = kmalloc(sizeof(vfs_dev_t))) == NULL) {
         goto failed_cleanup_name;
     }
 
     ret = -E_EXISTS;
-    lock_vdev_list();
+    lock_vdev_list();                                   // 锁住设备链表(这里通过信号量实现),保证互斥访问
     if (!check_devname_conflict(s_devname)) {
         unlock_vdev_list();
         goto failed_cleanup_vdev;
@@ -167,7 +174,7 @@ vfs_do_add(const char *devname, struct inode *devnode, struct fs *fs, bool mount
     vdev->mountable = mountable;
     vdev->fs = fs;
 
-    list_add(&vdev_list, &(vdev->vdev_link));
+    list_add(&vdev_list, &(vdev->vdev_link));           // 加入设备链表
     unlock_vdev_list();
     return 0;
 
@@ -182,14 +189,15 @@ failed_cleanup_name:
  * vfs_add_fs - Add a new fs,  by name. See  vfs_do_add information for the description of
  *              mountable.
  */
-int
-vfs_add_fs(const char *devname, struct fs *fs) {
+int vfs_add_fs(const char *devname, struct fs *fs) {
     return vfs_do_add(devname, NULL, fs, 0);
 }
 
 /*
  * vfs_add_dev - Add a new device, by name. See  vfs_do_add information for the description of
  *               mountable.
+ *  调用vfs_do_add() => 为传入的参数创建一个vfs_dev_t,然后将其加入设备链表
+ *  被dev_init_xxx()调用
  */
 int
 vfs_add_dev(const char *devname, struct inode *devnode, bool mountable) {

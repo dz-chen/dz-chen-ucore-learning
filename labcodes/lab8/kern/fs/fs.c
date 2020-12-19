@@ -10,9 +10,9 @@
 //called when init_main proc start
 void
 fs_init(void) {
-    vfs_init();
-    dev_init();
-    sfs_init();
+    vfs_init();             // 文件系统抽闲层
+    dev_init();             // 设备IO层
+    sfs_init();             // SFS文件系统
 }
 
 void

@@ -7,6 +7,13 @@
 #include <x86.h>
 #include <assert.h>
 
+/********************************************************************************************
+ *                              IDE接口相关
+ * 1.IDE是英文Integrated Drive Electronics的缩写,它的本意是指把控制器与盘体集成在一起的硬盘驱动器.
+ * 现在通常我们所说的IDE指的是硬盘等设备的一种接口技术
+ * 2.与IDE作用类似的接口技术还有SATA => IDE是并行的,SATA是串行的
+ * ******************************************************************************************/
+
 #define ISA_DATA                0x00
 #define ISA_ERROR               0x01
 #define ISA_PRECOMP             0x01
@@ -57,6 +64,11 @@ static const struct {
 #define IO_BASE(ideno)          (channels[(ideno) >> 1].base)
 #define IO_CTRL(ideno)          (channels[(ideno) >> 1].ctrl)
 
+
+
+/**
+ * 代表使用IDE接口的设备
+ * */
 static struct ide_device {
     unsigned char valid;        // 0 or 1 (If Device Really Exists)
     unsigned int sets;          // Commend Sets Supported
@@ -141,8 +153,8 @@ ide_init(void) {
     pic_enable(IRQ_IDE2);
 }
 
-bool
-ide_device_valid(unsigned short ideno) {
+
+bool ide_device_valid(unsigned short ideno) {
     return VALID_IDE(ideno);
 }
 
@@ -182,6 +194,7 @@ ide_read_secs(unsigned short ideno, uint32_t secno, void *dst, size_t nsecs) {
 out:
     return ret;
 }
+
 
 int
 ide_write_secs(unsigned short ideno, uint32_t secno, const void *src, size_t nsecs) {

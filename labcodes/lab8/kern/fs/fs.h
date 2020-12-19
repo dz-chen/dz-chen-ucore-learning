@@ -9,8 +9,8 @@
 #define SECTSIZE            512
 #define PAGE_NSECT          (PGSIZE / SECTSIZE)
 
-#define SWAP_DEV_NO         1
-#define DISK0_DEV_NO        2
+#define SWAP_DEV_NO         1       // 交换分区
+#define DISK0_DEV_NO        2       // 第一块磁盘
 #define DISK1_DEV_NO        3
 
 void fs_init(void);
@@ -23,10 +23,10 @@ struct file;
  * process's file related informaction
  */
 struct files_struct {
-    struct inode *pwd;      // inode of present working directory
-    struct file *fd_array;  // opened files array
-    int files_count;        // the number of opened files
-    semaphore_t files_sem;  // lock protect sem
+    struct inode *pwd;      // 进程当前执行目录的内存指针
+    struct file *fd_array;  // 进程打开文件的数组
+    int files_count;        // 访问此文件的线程数
+    semaphore_t files_sem;  // 确保对进程控制块中files_struct的互斥访问
 };
 
 #define FILES_STRUCT_BUFSIZE                       (PGSIZE - sizeof(struct files_struct))

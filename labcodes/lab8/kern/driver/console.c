@@ -111,8 +111,12 @@ serial_init(void) {
     }
 }
 
-static void
-lpt_putc_sub(int c) {
+
+/**
+ * 将字符输出到并口
+ * 
+ * */
+static void lpt_putc_sub(int c) {
     int i;
     for (i = 0; !(inb(LPTPORT + 1) & 0x80) && i < 12800; i ++) {
         delay();
@@ -122,15 +126,20 @@ lpt_putc_sub(int c) {
     outb(LPTPORT + 2, 0x08);
 }
 
-/* lpt_putc - copy console output to parallel port */
+/**
+ *  lpt_putc - copy console output to parallel port 
+ *  将字符输出到并口
+ *  '\b'含义:将光标从当前位置向前(左)移动一个字符,遇到\n或\r则停止移动.并从此位置开始输出后面的字符
+ *  
+ * */
 static void
 lpt_putc(int c) {
-    if (c != '\b') {
+    if (c != '\b') {                    // 普通字符,直接输出
         lpt_putc_sub(c);
     }
     else {
-        lpt_putc_sub('\b');
-        lpt_putc_sub(' ');
+        lpt_putc_sub('\b');            
+        lpt_putc_sub(' ');              // 这两步不是多余的吗??
         lpt_putc_sub('\b');
     }
 }
@@ -144,20 +153,20 @@ cga_putc(int c) {
     }
 
     switch (c & 0xff) {
-    case '\b':
-        if (crt_pos > 0) {
-            crt_pos --;
-            crt_buf[crt_pos] = (c & ~0xff) | ' ';
-        }
-        break;
-    case '\n':
-        crt_pos += CRT_COLS;
-    case '\r':
-        crt_pos -= (crt_pos % CRT_COLS);
-        break;
-    default:
-        crt_buf[crt_pos ++] = c;     // write the character
-        break;
+        case '\b':
+            if (crt_pos > 0) {
+                crt_pos --;
+                crt_buf[crt_pos] = (c & ~0xff) | ' ';
+            }
+            break;
+        case '\n':
+            crt_pos += CRT_COLS;
+        case '\r':
+            crt_pos -= (crt_pos % CRT_COLS);
+            break;
+        default:
+            crt_buf[crt_pos ++] = c;     // write the character
+            break;
     }
 
     // What is the purpose of this?
@@ -422,15 +431,18 @@ cons_init(void) {
     }
 }
 
-/* cons_putc - print a single character @c to console devices */
+/**
+ *  cons_putc - print a single character @c to console devices 
+ *  console devices包括:串口、并口、CGA显示器
+ * */
 void
 cons_putc(int c) {
     bool intr_flag;
-    local_intr_save(intr_flag);
+    local_intr_save(intr_flag);            // 关中断
     {
-        lpt_putc(c);
-        cga_putc(c);
-        serial_putc(c);
+        lpt_putc(c);         // 将字符输出到并口
+        cga_putc(c);         // ...CGA显示器
+        serial_putc(c);      // ...串口
     }
     local_intr_restore(intr_flag);
 }

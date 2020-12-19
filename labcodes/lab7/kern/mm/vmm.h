@@ -37,9 +37,9 @@ struct mm_struct {
     int map_count;                 // the count of these vma
     void *sm_priv;                 // the private data for swap manager
     int mm_count;                  // the number ofprocess which shared the mm
+    // mm_sem取代原来的mm_lock
     semaphore_t mm_sem;            // mutex for using dup_mmap fun to duplicat the mm 
     int locked_by;                 // the lock owner process's pid
-
 };
 
 struct vma_struct *find_vma(struct mm_struct *mm, uintptr_t addr);

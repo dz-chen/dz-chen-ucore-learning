@@ -3,8 +3,12 @@
 #include <string.h>
 #include <sys/stat.h>
 
-int
-main(int argc, char *argv[]) {
+/****************************************************************
+ *  一个工具程序,主要用于将bootloader填充至512bytes
+ *  且符合MBR格式(最后两个字节必须是:0x55 0xAA)
+ * **************************************************************/
+
+int main(int argc, char *argv[]) {
     struct stat st;
     if (argc != 3) {
         fprintf(stderr, "Usage: <input filename> <output filename>\n");
@@ -28,7 +32,8 @@ main(int argc, char *argv[]) {
         return -1;
     }
     fclose(ifp);
-    buf[510] = 0x55;
+    // 设置主引导扇区的结束标志
+    buf[510] = 0x55;       
     buf[511] = 0xAA;
     FILE *ofp = fopen(argv[2], "wb+");
     size = fwrite(buf, 1, 512, ofp);

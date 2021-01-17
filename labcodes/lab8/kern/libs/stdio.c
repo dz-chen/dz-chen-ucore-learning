@@ -35,12 +35,12 @@ vcprintf(const char *fmt, va_list ap) {
  *
  * The return value is the number of characters which would be
  * written to stdout.
+ * 格式化打印输出(就像C提供的printf,只是这里是自己实现,不用深究)
  * */
-int
-cprintf(const char *fmt, ...) {
+int cprintf(const char *fmt, ...) {
     va_list ap;
     int cnt;
-    va_start(ap, fmt);
+    va_start(ap, fmt);                  // 见stdarg.h
     cnt = vcprintf(fmt, ap);
     va_end(ap);
     return cnt;

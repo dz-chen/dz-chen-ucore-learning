@@ -1,10 +1,28 @@
 # handler
+# #########################################################  中断处理映射 
+# 由tools/vector.c生成
+# 中断可以分成两类:一类是压入错误编码的(error code); 另一类不压入错误编码
+#                 对于第二类,vector.S自动压入一个0.此外,还会压入相应中断的中断号.
+# 在压入必要参数后,所有中断处理函数跳转到统一入口:__alltraps
+# __alltraps定义在 ./trapentry.S
+#
+# 每个vectori,就是中断服务例程i的入口地址(或者说就是一个中断服务例程)!!!
+#
+# .long vector1 的含义 => 将vector1的地址写入__vectors[1]中 
+#     =>即_vectors[]中存储的是中断服务处理程序vectori的入口地址  
+#
+# 为什么vectori要压栈?
+#  => 为了构造调用trap()时的参数trapframe; 这里压栈就是构造tf_err、tf_trapno两个字段(见trap.h)
+#     可进一步阅读trapentry.S中压入更多寄存器值(ds、es、...以及通用寄存器)
+# 
+# 注:这里的栈是内核栈!!!
+
 .text
-.globl __alltraps
+.globl __alltraps            
 .globl vector0
 vector0:
-  pushl $0
-  pushl $0
+  pushl $0              # 压入0
+  pushl $0              # 压入中断号
   jmp __alltraps
 .globl vector1
 vector1:

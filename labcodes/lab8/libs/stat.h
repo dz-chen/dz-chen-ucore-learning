@@ -13,7 +13,7 @@ struct stat {
 #define S_IFMT          070000          // mask for type of file
 #define S_IFREG         010000          // ordinary regular file
 #define S_IFDIR         020000          // directory
-#define S_IFLNK         030000          // symbolic link
+#define S_IFLNK         030000          // symbolic link => 这里应该是hardlink
 #define S_IFCHR         040000          // character device
 #define S_IFBLK         050000          // block device
 

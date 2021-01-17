@@ -3,16 +3,18 @@
 
 /* This file contains the definitions for memory management in our OS. */
 
-/* global segment number */
-#define SEG_KTEXT   1
+/* global segment number
+ * 对比bootasm.S中gdt的初始化
+ */
+#define SEG_KTEXT   1                       // 段选择子(编号);每个编号的段描述符在GDT中占8字节
 #define SEG_KDATA   2
 #define SEG_UTEXT   3
 #define SEG_UDATA   4
 #define SEG_TSS     5
 
 /* global descrptor numbers */
-#define GD_KTEXT    ((SEG_KTEXT) << 3)      // kernel text
-#define GD_KDATA    ((SEG_KDATA) << 3)      // kernel data
+#define GD_KTEXT    ((SEG_KTEXT) << 3)      // kernel text => 内核代码段的选择子(准确说是相对于GDT的偏移);
+#define GD_KDATA    ((SEG_KDATA) << 3)      // kernel data    <<8就是为了由编号计算偏移
 #define GD_UTEXT    ((SEG_UTEXT) << 3)      // user text
 #define GD_UDATA    ((SEG_UDATA) << 3)      // user data
 #define GD_TSS      ((SEG_TSS) << 3)        // task segment selector

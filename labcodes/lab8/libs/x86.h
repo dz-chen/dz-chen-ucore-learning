@@ -31,7 +31,10 @@ static inline void breakpoint(void) __attribute__((always_inline));
 static inline uint32_t read_dr(unsigned regnum) __attribute__((always_inline));
 static inline void write_dr(unsigned regnum, uint32_t value) __attribute__((always_inline));
 
-/* Pseudo-descriptors used for LGDT, LLDT(not used) and LIDT instructions. */
+/* Pseudo-descriptors used for LGDT, LLDT(not used) and LIDT instructions. 
+ * 存储GDTR、IDTR中的内容
+ * 包括限长、基址两个字段
+ */
 struct pseudodesc {
     uint16_t pd_lim;        // Limit
     uintptr_t pd_base;      // Base address
@@ -95,8 +98,8 @@ outsl(uint32_t port, const void *addr, int cnt) {
         : "memory", "cc");
 }
 
-static inline uint32_t
-read_ebp(void) {
+// 读ebp寄存器值
+static inline uint32_t read_ebp(void) {
     uint32_t ebp;
     asm volatile ("movl %%ebp, %0" : "=r" (ebp));
     return ebp;

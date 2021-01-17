@@ -21,9 +21,10 @@ struct file;
 
 /*
  * process's file related informaction
+ * 进程访问文件的数据接口,即它是进程的成员变量(见process/proc.h)
  */
 struct files_struct {
-    struct inode *pwd;      // 进程当前执行目录的内存指针
+    struct inode *pwd;      // 进程当前执行目录的内存指针 (print work directory)
     struct file *fd_array;  // 进程打开文件的数组
     int files_count;        // 访问此文件的线程数
     semaphore_t files_sem;  // 确保对进程控制块中files_struct的互斥访问

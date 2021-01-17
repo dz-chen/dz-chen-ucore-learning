@@ -267,9 +267,9 @@ UCOREIMG	:= $(call totarget,ucore.img)		# 调用totarget函数(来自function.mk
 
 ####下面几行体现了makefile的基本规则 => 
 #line1:冒号前表示目标文件;冒号后表示生成目标需要依赖的文件; line2-4是生成目标文件对应的命令
-#line2:/dev/zero是提供空字符的文件(设备),$@表示目标文件 => 此语句含义是使用10000个空的block来填充/初始化目标文件
+#line2:/dev/zero是提供空字符的文件(设备),$@表示目标文件 => 此语句含义是使用10000个空的block来填充/初始化目标文件(输出目标文件共5.12MB)
 #line3:conv=notrunc表示在复制过程中不截短输出文件
-#line4:seek表示从开头跳过blocks个块后再复制
+#line4:seek表示从开头跳过blocks个块后再复制(第一个block/512B属于bootloader)
 $(UCOREIMG): $(kernel) $(bootblock)	
 	$(warning ************************************** 即将生成ucore.img目标 )			
 	$(V)dd if=/dev/zero of=$@ count=10000		

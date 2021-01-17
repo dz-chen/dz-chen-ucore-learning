@@ -32,8 +32,8 @@ struct iobuf;
 
 struct inode {
     union {                                   // 包含不同文件系统特定inode信息的union成员变量
-        struct device __device_info;          // 设备文件系统内存inode信息 
-        struct sfs_inode __sfs_inode_info;    // SFS文件系统内存inode信息
+        struct device __device_info;          // 设备文件系统内存inode信息 => 其他IO设备
+        struct sfs_inode __sfs_inode_info;    // SFS文件系统内存inode信息 => 普通磁盘文件?
     } in_info;
     enum {
         inode_type_device_info = 0x1234,
@@ -56,6 +56,11 @@ struct inode {
         &(__node->in_info.__##type##_info);                         \
      })
 
+
+/**
+ * 将VFS层的inode转换为SFS层的sfs_inode ;
+ * 或者 将VFS层的inode转换为设备文件层的device
+ * */
 #define vop_info(node, type)                                        __vop_info(node, type)
 
 #define info2node(info, type)                                       \

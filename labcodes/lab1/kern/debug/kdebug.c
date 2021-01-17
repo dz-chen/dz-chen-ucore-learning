@@ -312,7 +312,10 @@ void print_stackframe(void) {
     /********* 3.打印所有栈帧内容... *******/
     // while(ebp!=0x0) => 按题意,只打印栈深度以内的数据
    for(int i=0;i<STACKFRAME_DEPTH;i++){
-        if(ebp==0) break;
+        if(ebp==0){
+            cprintf("now is stack bottom, ebp==0 !\n");           // for test
+            break;
+        }
          // 3.1 printf value of ebp, eip
         cprintf("ebp:0x%08x eip:0x%08x ",ebp,eip);
         // 3.2 打印函数调用的参数
@@ -322,30 +325,10 @@ void print_stackframe(void) {
         cprintf("\n");
         // 3.4 打印debuginfo
         print_debuginfo(eip-1);
-        // 3.5 出栈,继续打印上一帧内容 => 为什么更新ebp、eip的顺序会影响print_debuginfo的调用结果???
-        // ebp=((uint32_t *)ebp)[0];
-        // eip=((uint32_t *)ebp)[1];            // 栈ebp地址往上4byte是返回地址
+        // 3.5 出栈,继续打印上一帧内容 => 注意更新ebp、eip的顺序
         eip =( (uint32_t*) ebp)[1];     //进入上一层的栈
         ebp= ((uint32_t* ) ebp)[0];
     }
     
-    //   for (int i = 0;i  < STACKFRAME_DEPTH;i++)
-    //   {   //输出
-    //     if (ebp==0)  break;
-    //       //输出当前的eip、ebp
-    //     cprintf("-> ebp:0x%08x   eip:0x%08x   " ,ebp,eip);
-    //     //指向参数所在的栈地址
-    //     uint32_t* arguments = (uint32_t*) ebp+2;      
-    //     cprintf("args: ");
-    //     for (int j = 0 ;j<4;j++)      //输出参数
-    //     {
-    //       cprintf("0x%08x ",arguments[j]);
-    //     }
-    //     cprintf("\n");
-    //     print_debuginfo(eip-1);
-    //     eip =( (uint32_t*) ebp)[1];     //进入上一层的栈
-    //     ebp= ((uint32_t* ) ebp)[0];
-    //   }
-
 }
 

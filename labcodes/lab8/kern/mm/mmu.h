@@ -61,10 +61,12 @@
 
 #include <defs.h>
 
-/* Gate descriptors for interrupts and traps */
+/* Gate descriptors for interrupts and traps 
+ * 中断门描述符,8字节
+ */
 struct gatedesc {
     unsigned gd_off_15_0 : 16;      // low 16 bits of offset in segment
-    unsigned gd_ss : 16;            // segment selector
+    unsigned gd_ss : 16;            // segment selector => 段选择子,第2、3字节
     unsigned gd_args : 5;           // # args, 0 for interrupt/trap gates
     unsigned gd_rsv1 : 3;           // reserved(should be zero I guess)
     unsigned gd_type : 4;           // type(STS_{TG,IG32,TG32})

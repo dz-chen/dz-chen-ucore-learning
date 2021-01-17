@@ -69,29 +69,33 @@ typedef struct monitor monitor_t;
 
 // 条件变量的数据结构
 typedef struct condvar{
-    semaphore_t sem;        // the sem semaphore  is used to down the waiting proc, and the signaling proc should up the waiting proc
-    // 在这个条件变量上睡眠的进程
-    int count;              // the number of waiters on condvar
-    // 此条件变量的宿主是哪个进程
-    monitor_t * owner;      // the owner(monitor) of this condvar
+    semaphore_t sem;        // 通过这个sem,条件变量可直接使用信号量的P、V操作来实现wait、signal
+    int count;              // 等待条件变量的进程数
+    monitor_t * owner;      // 这个条件变量属于哪个管程
 } condvar_t;
 
 
 // 管程的数据结构
 typedef struct monitor{
-    // mutex用于保证一次只有一个进程进入管程
-    semaphore_t mutex;      // the mutex lock for going into the routines in monitor, should be initialized to 1
-    semaphore_t next;       // the next semaphore is used to down the signaling proc itself, and the other OR wakeuped waiting proc should wake up the sleeped signaling proc.
-    int next_count;         // the number of of sleeped signaling proc
-    condvar_t *cv;          // the condvars in monitor
+    semaphore_t mutex;      // 互斥信号量,用于保证一次只有一个进程进入管程 
+    semaphore_t next;       // 用于配合对条件变量的wait、signal操作 ????
+    int next_count;         // 由于发出了signal而阻塞的进程个数(A通过signal唤醒B,则A自身必须被阻塞)
+    condvar_t *cv;          // 条件变量,通过条件变量来组织进程阻塞(条件变量中有信号量,用这个信号量来实现wait、signal)
 } monitor_t;
 
 // Initialize variables in monitor.
 void     monitor_init (monitor_t *cvp, size_t num_cv);
-// Unlock one of threads waiting on the condition variable. 
-void     cond_signal (condvar_t *cvp);
+
+
 // Suspend calling thread on a condition variable waiting for condition atomically unlock mutex in monitor,
 // and suspends calling thread on conditional variable after waking up locks mutex.
-void     cond_wait (condvar_t *cvp);
+void     cond_wait (condvar_t *cvp);            // 阻塞进程
+
+
+// Unlock one of threads waiting on the condition variable. 
+void     cond_signal (condvar_t *cvp);         // 唤醒进程
+
+
+
      
 #endif /* !__KERN_SYNC_MONITOR_CONDVAR_H__ */

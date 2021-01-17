@@ -15,28 +15,29 @@
 #include <fs.h>
 #include <kmonitor.h>
 
-int kern_init(void) __attribute__((noreturn));
+int kern_init(void) __attribute__((noreturn));   // 声明函数属性 => 不会返回!
 void grade_backtrace(void);
 static void lab1_switch_test(void);
 
-int
-kern_init(void) {
-    extern char edata[], end[];
-    memset(edata, 0, end - edata);
-
-    cons_init();                // init the console
+// ucore初始化(在entry.S中被调用)
+int kern_init(void) {
+    extern char edata[], end[];             // 定义见kernel.ld,分别是bss段的起始、结束地址
+    memset(edata, 0, end - edata);          // bss段存储未初始化的以及被初始化为0的全局或静态C变量.
+                                            // 这部分在磁盘上的ELF文件中不占空间,但是加载到内存时需要在内存中分配.所以memset...
+                                            
+    cons_init();                // 初始化终端,包括:cga_init、serial_init、kbd_init
 
     const char *message = "(THU.CST) os is loading ...";
     cprintf("%s\n\n", message);
 
-    print_kerninfo();
+    print_kerninfo();           // 打印内核的基本信息(内核入口、段基址等)
 
-    grade_backtrace();
+    grade_backtrace();          // 显示堆栈信息,最终调用print_stackframe()
 
     pmm_init();                 // init physical memory management
 
-    pic_init();                 // init interrupt controller
-    idt_init();                 // init interrupt descriptor table
+    pic_init();                 // 初始化中断控制器(8259A)
+    idt_init();                 // 初始化IDT(对比GDT的初始化,在bootasm.S)
 
     vmm_init();                 // init virtual memory management
     sched_init();               // init scheduler
@@ -45,10 +46,11 @@ kern_init(void) {
     ide_init();                 // init ide devices
     swap_init();                // init swap
 
-    // 初始化文件系统
-    fs_init();                  // init fs
+   
+    fs_init();                  // 初始化文件系统
     
-    clock_init();               // init clock interrupt
+    clock_init();               // 初始化时钟(使能时钟中断)
+
     intr_enable();              // enable irq interrupt
 
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()
@@ -60,7 +62,7 @@ kern_init(void) {
 
 void __attribute__((noinline))
 grade_backtrace2(int arg0, int arg1, int arg2, int arg3) {
-    mon_backtrace(0, NULL, NULL);
+    mon_backtrace(0, NULL, NULL);           // 见kmonitor.c,它直接调用print_stackframe
 }
 
 void __attribute__((noinline))

@@ -16,6 +16,10 @@
 /******************************************************************
  *          基于信号量的哲学家就餐问题
  *          基于管程的哲学家就餐问题
+ * 
+ * 1.这里的哲学家问题解法很难理解,参考下文可能有点帮助:
+ *      https://segmentfault.com/q/1010000011556406
+ * 2.
  * ****************************************************************/
 
 
@@ -89,36 +93,47 @@ void drop_chopsticks(int i)
 int state_sema[N]; /* 记录每个人状态的数组,共5人 */
 /* 信号量是一个特殊的整型变量 */
 semaphore_t mutex; /* 临界区互斥:互斥信号量,初始化为1 */
-semaphore_t s[N]; /* 每个哲学家一个信号量:同步信号量,初始化为0 */
+semaphore_t s[N]; /* 每个哲学家一个信号量:同步信号量,初始化为0 */  // => 这个信号量的含义??
 
 struct proc_struct *philosopher_proc_sema[N];
 
-void phi_test_sema(i) /* i：哲学家号码从0到N-1 */
-{ 
-    if(state_sema[i]==HUNGRY&&state_sema[LEFT]!=EATING
-            &&state_sema[RIGHT]!=EATING)
+
+// 尝试获得哲学家i的左右两把叉子
+void phi_test_sema(int i) /* i：哲学家号码从0到N-1 */
+{   
+    // 只有在左右哲学家都空闲时,才能进入就餐状态
+    if(state_sema[i]==HUNGRY && state_sema[LEFT]!=EATING && state_sema[RIGHT]!=EATING)
     {
         state_sema[i]=EATING;
-        up(&s[i]);
+        up(&s[i]);     // 这里可以看做是释放一个"资源",从而能够唤醒其他阻塞的进程
     }
 }
 
+
+// 哲学家i拿起叉子吃饭
 void phi_take_forks_sema(int i) /* i：哲学家号码从0到N-1 */
 { 
-        down(&mutex); /* 进入临界区 */
-        state_sema[i]=HUNGRY; /* 记录下哲学家i饥饿的事实 */
-        phi_test_sema(i); /* 试图得到两只叉子 */
-        up(&mutex); /* 离开临界区 */
-        down(&s[i]); /* 如果得不到叉子就阻塞 */
+    down(&mutex); /* 进入临界区 */
+    state_sema[i]=HUNGRY; /* 记录下哲学家i饥饿的事实 */
+    phi_test_sema(i); /* 试图得到两只叉子 */
+    up(&mutex); /* 离开临界区 */
+    down(&s[i]); /* 如果得不到叉子就阻塞 */
+    /**************************************************************
+     * 对这里down(&s[i])的解释:
+     * 执行down(&s[i])时存在两种情况 => 
+     * 1.phi_test_sema(i)时成功获得叉子,s[i]为1,执行down...
+     * 2.phi_test_sema(i)时没有获得叉子(因为左/右有人在吃),s[i]为0,执行down是为了阻塞进程
+    ***************************************************************/
 }
 
+// 哲学家i放下叉子
 void phi_put_forks_sema(int i) /* i：哲学家号码从0到N-1 */
 { 
-        down(&mutex); /* 进入临界区 */
-        state_sema[i]=THINKING; /* 哲学家进餐结束 */
-        phi_test_sema(LEFT); /* 看一下左邻居现在是否能进餐 */
-        phi_test_sema(RIGHT); /* 看一下右邻居现在是否能进餐 */
-        up(&mutex); /* 离开临界区 */
+    down(&mutex); /* 进入临界区 */
+    state_sema[i]=THINKING; /* 哲学家进餐结束 */
+    phi_test_sema(LEFT); /* 看一下左邻居现在是否能进餐 */
+    phi_test_sema(RIGHT); /* 看一下右邻居现在是否能进餐 */
+    up(&mutex); /* 离开临界区 */
 }
 
 
@@ -142,6 +157,13 @@ int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 
     cprintf("No.%d philosopher_sema quit\n",i);
     return 0;    
 }
+
+
+
+
+
+
+
 
 //-----------------philosopher problem using monitor ------------
 /*PSEUDO CODE :philosopher problem using monitor
@@ -193,30 +215,51 @@ void phi_test_condvar (i) {
 
 
 void phi_take_forks_condvar(int i) {
-     down(&(mtp->mutex));
+    // 1.获取管程的互斥信号量,保证只有一个进程(的相关代码)进入管程 
+    down(&(mtp->mutex));                     
 //--------into routine in monitor--------------
      // LAB7 EXERCISE1: YOUR CODE
      // I am hungry
      // try to get fork
+    
+    // 2.进程真正需要执行的代码
+    state_condvar[i]=HUNGRY;               // 哲学家饥饿
+    phi_test_condvar(i);                   // 试图获得左右叉子
+    if(state_condvar[i]!=EATING){          // 获取叉子失败,阻塞在该哲学家对应的条件变量上
+        cond_wait(&(mtp->cv[i]));
+    }
 //--------leave routine in monitor--------------
-      if(mtp->next_count>0)
-         up(&(mtp->next));
-      else
-         up(&(mtp->mutex));
+
+    // 3.如果有阻塞在管程的next信号量上的进程,将其唤醒
+    if(mtp->next_count>0)
+        up(&(mtp->next));
+    
+    // 4.否则,将阻塞在管程的互斥信号量上的进程唤醒
+    else
+        up(&(mtp->mutex));
 }
 
 void phi_put_forks_condvar(int i) {
-     down(&(mtp->mutex));
+    // 1.获得互斥信号量,确保只有一个进程进入管程
+    down(&(mtp->mutex));
 
 //--------into routine in monitor--------------
      // LAB7 EXERCISE1: YOUR CODE
      // I ate over
      // test left and right neighbors
+
+    // 2.进程真正需要执行的代码
+    state_condvar[i]=THINKING;         /* 哲学家进餐结束 */
+    phi_test_condvar(LEFT);            /* 看一下左邻居现在是否能进餐 */
+    phi_test_condvar(RIGHT);           /* 看一下右邻居现在是否能进餐 */
 //--------leave routine in monitor--------------
-     if(mtp->next_count>0)
+    // 3.如果有阻塞在管程的next信号量上的进程,将其唤醒
+    if(mtp->next_count>0)
         up(&(mtp->next));
-     else
-        up(&(mtp->mutex));
+
+    // 4.否则,将阻塞在管程的互斥信号量上的进程唤醒
+    else
+       up(&(mtp->mutex));
 }
 
 

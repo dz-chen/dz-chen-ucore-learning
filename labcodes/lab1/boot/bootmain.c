@@ -16,7 +16,7 @@ while ((inb(0x1F7) & 0xC0) != 0x40)
 ************************************ 注意事项
 1.elfhdr结构体描述ELF头; proghdr结构体描述段头部表,一个段对应一个proghdr
 2.这里一个page对应8个扇区,共4096byte
-3.为什么ELFHDR从0x10000开始? => 1MB以下是BIOS和bootloader等程序,1MB以上才是操作系统
+3.为什么ELFHDR从0x10000开始? 
 4.为什么 va -= offset % SECTSIZE; va要减去这个部分??
 
 
@@ -53,7 +53,7 @@ while ((inb(0x1F7) & 0xC0) != 0x40)
  * **/
 
 #define SECTSIZE        512                             // 扇区大小:512B
-#define ELFHDR          ((struct elfhdr *)0x10000)      // scratch space => 操作系统从1MB开始
+#define ELFHDR          ((struct elfhdr *)0x10000)      // scratch space => 64k
 
 /* waitdisk - wait for disk ready */
 static void waitdisk(void) {
@@ -136,8 +136,6 @@ void bootmain(void) {
     if (ELFHDR->e_magic != ELF_MAGIC) {             // => 魔数常用于检验文件格式
         goto bad;
     }
-
-
 
     struct proghdr *ph, *eph;
     // load each program segment (ignores ph flags)

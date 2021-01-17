@@ -218,6 +218,15 @@ $(foreach f,$(bootfiles),$(call cc_compile,$(f),$(CC),$(CFLAGS) -Os -nostdinc))
 
 bootblock = $(call totarget,bootblock)
 
+# 定义bootblock的生成规则
+# line1:定义bootblock目标及其依赖;'|'左侧的前提目标是obj/boot/bootasm.o obj/boot/bootmain.o; '|'右侧的命名前提目标是bin/sign
+# line2:也只是一个输出提示;@不会输出整条命令=> 最终只会打印+ ld bin/kernel;没有@会打印整条命令
+# line3:执行链接:ld .... obj/boot/bootasm.o obj/boot/bootmain.o -o obj/bootblock.o
+#		其中,-N表示指定读取/写入文本和数据段; -T 指定链接程序
+# line4:执行命令:objdump -S obj/bootblock.o > obj/bootblock.asm
+# line5:执行命令:objcopy -S -O binary obj/bootblock.o obj/bootblock.out => 即复制二进制文件
+# line6:执行命令:bin/sign   obj/bootblock.out bin/bootblock
+# 		执行sign的作用,将加载程序bootblock.out填充至512bytes以符号MBR格式(sign只是一个工具程序,是bootloader符合MBR格式)
 $(bootblock): $(call toobj,boot/bootasm.S) $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -N -T tools/boot.ld $^ -o $(call toobj,bootblock)
@@ -242,6 +251,14 @@ $(call create_target_host,mksfs,mksfs)
 # create ucore.img
 UCOREIMG	:= $(call totarget,ucore.img)
 
+# 生成规则中 => dd命令用于读取、转换并输出数据
+# if:输入文件  of:输出文件
+# line1:/dev/zero是提供空字符的文件(设备),$@表示目标文件 
+#       => 使用10000个空的block来填充目标文件(block默认为512B),因此生成了一个5.12MB的目标文件
+# line2:if输入是boltloader,of输出是目标文件,conv=notrunc表示不对数据进行截断 
+#		=> 直接将bootloader复制到目标文件最开始处(bootloader大小不超过512B) 
+# line3:....seek从输出文件头开始跳过多少block再复制 
+#		=> 从输出目标文件跳过512B再开始复制(第一个扇区属于bootloader)
 $(UCOREIMG): $(kernel) $(bootblock)
 	$(V)dd if=/dev/zero of=$@ count=10000
 	$(V)dd if=$(bootblock) of=$@ conv=notrunc

@@ -14,7 +14,6 @@
 # ####################### 前置知识:8042芯片
 # 0x64端口:命令端口
 # 0x60端口:数据端口
-# .....??????????
 
 # ########################################## 开启保护模式代码解读
 # CR0寄存器最低位PE标志是否保护模式
@@ -29,7 +28,6 @@
 # movl $0x0, %ebp         # 栈帧基址(不是栈底!!!) 
 # movl $start, %esp       # 栈顶 start==0x7c00
 # call bootmain
-# 为什么栈顶是 start ??????? 栈帧基址不应该是0x7c00吗 ????
 # ebp并不是栈帧的基址,它其实处于栈帧的中间位置,用于定位栈帧的相关内容
 # => 详细知识参考:https://chyyuu.gitbooks.io/ucore_os_docs/content/lab1/lab1_3_3_1_function_stack.html
 # 这么设置相当于将bootloader看做第一帧...
@@ -145,7 +143,7 @@ spin:
 # 段描述符格式:https://chyyuu.gitbooks.io/ucore_os_docs/content/lab1_figs/image003.png
 # 基址32位; 限长20位; 属性... ; 注意基址、限长的bit不是连续的!!!
 # SEG_ASM(type,base,lim)
-# 为什么代码段、数据段的基址可以是一样的??
+# 注意ucore为了简便,代码段、数据段的基址是一样的
 gdt:
     SEG_NULLASM                                     # null seg  => 第一个段描述符设定为空段描述符
     SEG_ASM(STA_X|STA_R, 0x0, 0xffffffff)           # code seg for bootloader and kernel

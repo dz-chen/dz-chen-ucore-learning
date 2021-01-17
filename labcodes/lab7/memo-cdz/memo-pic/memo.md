@@ -152,12 +152,87 @@ int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 
 
 - **哲学家就餐问题的实现**  
 ucore中哲学家就餐问题的解法与原理课程中讲解的不同;  
-ucore中实现的方法参考自《现代操作系统》,详见书籍2.5-经典IPC问题
+ucore中实现的方法参考自《现代操作系统》,详见书籍2.5-经典IPC问题,ucore中具体实现如下(check_sync.c):
+```
+int state_sema[N]; /* 记录每个人状态的数组,共5人 */
+/* 信号量是一个特殊的整型变量 */
+semaphore_t mutex; /* 临界区互斥:互斥信号量,初始化为1 */
+semaphore_t s[N]; /* 每个哲学家一个信号量:同步信号量,初始化为0 */
+
+struct proc_struct *philosopher_proc_sema[N];
+
+// 尝试获得哲学家i的左右两把叉子
+void phi_test_sema(int i) /* i：哲学家号码从0到N-1 */
+{   
+    // 只有在左右哲学家都空闲时,才能进入就餐状态
+    if(state_sema[i]==HUNGRY && state_sema[LEFT]!=EATING && state_sema[RIGHT]!=EATING)
+    {
+        state_sema[i]=EATING;
+        up(&s[i]);                  
+    }
+}
+
+// 哲学家i拿起叉子吃饭
+void phi_take_forks_sema(int i) /* i：哲学家号码从0到N-1 */
+{ 
+        down(&mutex); /* 进入临界区 */
+        state_sema[i]=HUNGRY; /* 记录下哲学家i饥饿的事实 */
+        phi_test_sema(i); /* 试图得到两只叉子 */
+        up(&mutex); /* 离开临界区 */
+        down(&s[i]); /* 如果得不到叉子就阻塞 */
+}
+
+// 哲学家i放下叉子
+void phi_put_forks_sema(int i) /* i：哲学家号码从0到N-1 */
+{ 
+        down(&mutex); /* 进入临界区 */
+        state_sema[i]=THINKING; /* 哲学家进餐结束 */
+        phi_test_sema(LEFT); /* 看一下左邻居现在是否能进餐 */
+        phi_test_sema(RIGHT); /* 看一下右邻居现在是否能进餐 */
+        up(&mutex); /* 离开临界区 */
+}
 
 
-## 用户级信号量设计方案
+// 每个哲学家都执行此函数
+int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 */
+{
+    int i, iter=0;
+    i=(int)arg;
+    cprintf("I am No.%d philosopher_sema\n",i);
+    while(iter++<TIMES)
+    {   /* 无限循环 */
+        cprintf("Iter %d, No.%d philosopher_sema is thinking\n",iter,i); /* 哲学家正在思考 */
+        do_sleep(SLEEP_TIME);
+        phi_take_forks_sema(i);           // 拿两把叉子
+        /* 需要两只叉子，或者阻塞 */
+        cprintf("Iter %d, No.%d philosopher_sema is eating\n",iter,i); /* 进餐 */
+        do_sleep(SLEEP_TIME);
+        phi_put_forks_sema(i);           // 放下叉子
+        /* 把两把叉子同时放回桌子 */
+    }
+    cprintf("No.%d philosopher_sema quit\n",i);
+    return 0;    
+}
+```
+理解:某个哲学家要拿筷子吃东西,先把自己的状态成饥饿,然后看左右两边的人是不是在吃 =>   
+1.如果他们没在吃,那哲学家就可以拿筷子,拿筷子的时候,信号量up,拿到筷子之后信号量down,不用等待;  
+2.如果他们其中有人在吃,那哲学家不能拿筷子,这时直接信号量down,也就堵塞等待;  
+3.那谁通知阻塞的哲学家可以解除堵塞呢,就是它旁边两个拿了筷子的人.他们其中一个放下这个哲学家要的筷子的时候,看到这个哲学家是饥饿的,而且它两边的人都没在吃了,就up了一下它的信号量,那刚才堵塞的down就会解除,它就可以重新尝试拿筷子了;  
+4.可以看出,这里的信号量s[]起到了通知、等待的作用;  
+`问题`:每个哲学家对应的一个信号量代表什么?为什么初始化为0?为什么拿筷子时是V操作,拿起后才是P操作?  
+【答】待完成....
+
+
+## 给用户态进程/线程提供信号量
+??
+
 
 # 练习2:完成内核级条件变量和基于内核级条件变量的哲学家就餐问题
+## 对管程机制的理解
+## 内核级条件变量的设计与实现
+## 用户态条件变量设计方案
+## 条件变量能否不基于信号量实现?
+
 
 
 # 补充:同步互斥机制的设计与实现
@@ -357,7 +432,7 @@ monitor dp
 ```
 
 - **关键数据结构**  
-虽然大部分教科书上说明`管程适合在语言级实现比如java等高级语言`,没有提及在采用C语言的OS中如何实现.下面我们将要尝试在ucore中用C语言实现基于互斥和条件变量机制的管程基本原理.`ucore中的管程机制是基于信号量和条件变量来实现的`.ucore中的`管程`的数据结构monitor_t定义如下(详见monitor.h):
+虽然大部分教科书上说明`管程适合在语言级实现比如java等高级语言`,没有提及在采用C语言的OS中如何实现.下面我们将要尝试在`ucore中用C语言实现基于互斥和条件变量机制的管程`基本原理.`ucore中的管程机制是基于信号量和条件变量来实现的`.ucore中的`管程`的数据结构monitor_t定义如下(详见monitor.h):
 ```
 typedef struct monitor{
     semaphore_t mutex;      // the mutex lock for going into the routines in monitor, should be initialized to 1
@@ -430,8 +505,8 @@ function_in_monitor(...)
 
 注:上述只是原理描述,与具体实现相比,还有一定的差距
 
-# 总结-信号量、锁、管程
-???
+# 总结:锁(临界区)、信号量(临界区)、条件变量(管程)
+待完成
 
 
 # 相关要点/问题速览
@@ -442,7 +517,9 @@ proc.c: init_main() => check_sync()
 - **如何理解时钟中断?多久一次时钟中断?**  
 时钟中断是中断的一种,在trap_dispatch()函数中会处理时钟中断;  
 发生时钟中断后,调用run_timer_list()函数,从而唤醒阻塞的进程.ucore的进程调度也是发生时钟中断发生时;  
-多久一次???  
+多久一次? => 与操作系统的时钟管理有关,可以在内核代码中设置中断频率....
 
 - **ucore中基于内核级信号量的哲学家就餐问题与书本不同,如何理解??**  
 ??
+
+

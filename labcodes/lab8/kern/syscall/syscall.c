@@ -162,12 +162,13 @@ sys_dup(uint32_t arg[]) {
     return sysfile_dup(fd1, fd2);
 }
 
+// 中断向量号定义见libs/unistd.h
 static int (*syscalls[])(uint32_t arg[]) = {
     [SYS_exit]              sys_exit,
     [SYS_fork]              sys_fork,
     [SYS_wait]              sys_wait,
     [SYS_exec]              sys_exec,
-    [SYS_yield]             sys_yield,
+    [SYS_yield]             sys_yield,       // 指定下标10(中断向量号10)对应的处理程序
     [SYS_kill]              sys_kill,
     [SYS_getpid]            sys_getpid,
     [SYS_putc]              sys_putc,
@@ -189,14 +190,21 @@ static int (*syscalls[])(uint32_t arg[]) = {
 
 #define NUM_SYSCALLS        ((sizeof(syscalls)) / (sizeof(syscalls[0])))
 
-void
-syscall(void) {
+
+/**
+ * 根据当前线程设置的要调用的函数编号(存放在ax寄存器中),分发到具体的系统调用函数;
+ * 此函数在trap.c中trap_dispatch()函数中被调用;
+ * 对ucore而言,所有系统调用共享一个中断号0x80;
+ * 从int 0x80进入系统调用后,再根据函数的编号分发到具体的系统调用程序.
+ * 在哪里执行int 0x80 => 见user/libs/syscall.c(会设置相应寄存器)
+ **/
+void syscall(void) {
     struct trapframe *tf = current->tf;
     uint32_t arg[5];
     int num = tf->tf_regs.reg_eax;
     if (num >= 0 && num < NUM_SYSCALLS) {
         if (syscalls[num] != NULL) {
-            arg[0] = tf->tf_regs.reg_edx;
+            arg[0] = tf->tf_regs.reg_edx;       // 参数
             arg[1] = tf->tf_regs.reg_ecx;
             arg[2] = tf->tf_regs.reg_ebx;
             arg[3] = tf->tf_regs.reg_edi;

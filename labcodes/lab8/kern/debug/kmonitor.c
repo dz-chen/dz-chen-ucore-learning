@@ -8,6 +8,7 @@
 /* *
  * Simple command-line kernel monitor useful for controlling the
  * kernel and exploring the system interactively.
+ * 详见下面:void kmonitor(struct trapframe *tf)
  * */
 
 struct command {
@@ -72,7 +73,7 @@ runcmd(char *buf, struct trapframe *tf) {
     int i;
     for (i = 0; i < NCOMMANDS; i ++) {
         if (strcmp(commands[i].name, argv[0]) == 0) {
-            return commands[i].func(argc - 1, argv + 1, tf);
+            return commands[i].func(argc - 1, argv + 1, tf);    // 调用相关函数监视内核信息
         }
     }
     cprintf("Unknown command '%s'\n", argv[0]);
@@ -80,9 +81,8 @@ runcmd(char *buf, struct trapframe *tf) {
 }
 
 /***** Implementations of basic kernel monitor commands *****/
-
-void
-kmonitor(struct trapframe *tf) {
+// 被panic调用(见panic.c),当程序出现不可修复的错误时,调用此函数打印堆栈信息
+void kmonitor(struct trapframe *tf) {
     cprintf("Welcome to the kernel debug monitor!!\n");
     cprintf("Type 'help' for a list of commands.\n");
 

@@ -60,7 +60,7 @@ count = read(filehandle, buffer, nbytes);
 
 ## 文件系统抽象层VFS
 文件系统抽象层是把不同文件系统的对外共性接口提取出来,形成一个函数指针数组.这样,通用文件系统访问接口层只需访问文件系统抽象层,而不需关心具体文件系统的实现细节和接口.
-- **file & dir 接口**  
+### file & dir 接口  
 进程访问文件是通过进程控制块中的files_struct结构获取文件相关信息,此结构定义如下(见kern/fs/fs.h):
 ```
 struct files_struct {
@@ -70,6 +70,9 @@ struct files_struct {
     semaphore_t files_sem;  // 确保对进程控制块中files_struct的互斥访问
 };
 ```
+当创建一个进程后,该进程的files_struct将会被初始化或复制父进程的files_struct.当用户进程打开一个文件时,将从fd_array数组中取得一个空闲的file项,然后会把此file的成员变量node指针(见下面的file结构体)指向一个代表此文件的inode的起始地址  
+  
+
 file&dir接口层定义了进程在内核中直接访问的文件相关信息,文件信息定义在file数据结构中,具体描述如下(见kern/fs/file.h):
 ```
 struct file {
@@ -85,7 +88,7 @@ struct file {
 };
 ```
 
-- **inode接口**  
+### inode接口
 index node是位于内存的索引节点，它是VFS结构中的重要数据结构，因为它实际负责把不同文件系统的特定索引节点信息(甚至不能算是一个索引节点)统一封装起来,避免了进程直接访问具体文件系统.其定义如下(见kern/fs/vfs/inode.h):
 ```
 struct inode {
@@ -125,6 +128,16 @@ struct inode_ops {
 };
 ```
 参照上面对SFS中的索引节点操作函数的说明，可以看出`inode_ops是对常规文件、目录、设备文件所有操作的一个抽象函数表示`.对于某一具体的文件系统中的文件或目录,只需实现相关的函数,就可以被用户进程访问具体的文件了,且用户进程无需了解具体文件系统的实现细节.
+### VFS与通用文件系统访问接口的衔接
+文件操作在用户层提供了通用的接口,常用的是open、close、read、write.下面以read为例,讲述用户态的通用访问接口如何与调用到VFS层接口的:  
+```
+read(user/libs/file.c)  => sys_read(user/libs/syscall.c)  => syscall(user/libs/syscall.c, 然后执行中断)  
+=> sys_read(kern/syscall/syscall.c,这是已经进入内核)  => sysfile_read(kern/fs/sysfile.c) => file_read(kern/fs/file.c)  => vop_read(kern/fs/vfs/inode.h)
+```
+其实,进入了file_read(kern/fs/file.c)开始,基本就可看做是进入了VFS层.在file_read中会获取file结构,它为vop_read提供必要信息,file结构虽然不是在vfs目录下,但是file&dir 以及inode都应该看做是VFS层提供的接口.  
+至于inode中的inode_ops,包含一系列文件操作,这些操作是在SFS层实现,它可以看做是VFS和SFS的接口......
+
+
 
 ## Simple FS文件系统
 ### 概述  
@@ -134,7 +147,7 @@ ucore内核把所有文件都看作是字节流,任何内部逻辑结构都是�
 `链接文件`:实际上一个链接文件是一个已经存在的文件的另一个可选择的文件名(=> 软连接、硬连接).  
 `设备文件`:不包含数据,但是提供了一个映射物理设备(如串口、键盘等)到一个文件名的机制.可通过设备文件访问外围设备.  
 `管道`:管道是进程间通讯的一个基础设施.管道缓存了其输入端所接受的数据,以便在管道输出端读的进程能一个先进先出的方式来接受数据.  
-在lab8中关注的主要是SFS支持的常规文件、目录和链接中的hardlink的设计实现.SFS文件系统中目录和常规文件具有共同的属性,而这些属性保存在索引节点中.SFS通过索引节点来管理目录和常规文件,索引节点包含操作系统所需要的关于某个文件的关键信息,比如文件的属性、访问许可权以及其它控制信息都保存在索引节点中.可以有多个文件名可指向一个索引节点.
+在lab8中关注的主要是SFS支持的常规文件、目录和链接中的hardlink(硬链接)的设计实现.SFS文件系统中目录和常规文件具有共同的属性,而这些属性保存在索引节点中.SFS通过索引节点来管理目录和常规文件,索引节点包含操作系统所需要的关于某个文件的关键信息,比如文件的属性、访问许可权以及其它控制信息都保存在索引节点中.可以有多个文件名可指向一个索引节点.
 
 ### 文件系统的布局  
 文件系统通常保存在磁盘上.`在本实验中,第三个磁盘(即disk0,前两个磁盘分别是ucore.img和swap.img)用于存放一个SFS文件系统(Simple Filesystem)`.通常文件系统中,磁盘的使用是以扇区(Sector)为单位的,但是为了实现简便,SFS中以block(4K,与内存page大小相等)为基本单位.SFS文件系统的布局如下图所示:
@@ -188,7 +201,7 @@ struct sfs_disk_entry {
     char name[SFS_MAX_FNAME_LEN + 1];    // 文件名
 };
 ```
-操作系统中,每个文件系统下的inode都应该分配唯一的inode编号.SFS下,为了实现的简便(偷懒),每个inode直接用他所在的磁盘 block的编号作为inode编号.比如:root block的inode编号为1;  每个sfs_disk_entry数据结构中,name表示目录下文件或文件夹的名称,ino表示磁盘block编号,通过读取该block的数据,能够得到相应的文件或文件夹的inode.ino为0时,表示一个无效的entry.和inode相似,每个sfs_dirent_entry也占用一个block.
+操作系统中,每个文件系统下的inode都应该分配唯一的inode编号.SFS下,为了实现的简便(偷懒),每个inode直接用他所在的磁盘 block的编号作为inode编号.比如:root block的inode编号为1;  每个sfs_disk_entry数据结构中,name表示目录下文件或文件夹的名称,ino表示磁盘block编号,通过读取该block的数据,能够得到相应的文件或文件夹的inode.ino为0时,表示一个无效的entry.和inode相似,每个sfs_disk_entry也占用一个block.
 
 - **内存中的索引节点**  
 ```
@@ -249,6 +262,38 @@ static const struct inode_ops sfs_node_dirops = {
 };
 ```
 对于目录操作而言,由于目录也是一种文件,所以sfs_opendir、sys_close对应户进程发出的open、close函数.相对于sfs_open,sfs_opendir只是完成一些open函数传递的参数判断,没做其他更多的事情.目录的close操作与文件的close操作完全一致.由于目录的内容数据与文件的内容数据不同,所以读出目录的内容数据的函数是sfs_getdirentry,其主要工作是获取目录下的文件inode信息.
+
+### SFS与VFS的衔接
+详见kern/fs/sfs/sfs_inode.c
+```
+static const struct inode_ops sfs_node_dirops = {
+    .vop_magic                      = VOP_MAGIC,
+    .vop_open                       = sfs_opendir,
+    .vop_close                      = sfs_close,
+    .vop_fstat                      = sfs_fstat,
+    .vop_fsync                      = sfs_fsync,
+    .vop_namefile                   = sfs_namefile,
+    .vop_getdirentry                = sfs_getdirentry,
+    .vop_reclaim                    = sfs_reclaim,
+    .vop_gettype                    = sfs_gettype,
+    .vop_lookup                     = sfs_lookup,
+};
+/// The sfs specific FILE operations correspond to the abstract operations on a inode.
+static const struct inode_ops sfs_node_fileops = {
+    .vop_magic                      = VOP_MAGIC,
+    .vop_open                       = sfs_openfile,
+    .vop_close                      = sfs_close,
+    .vop_read                       = sfs_read,
+    .vop_write                      = sfs_write,
+    .vop_fstat                      = sfs_fstat,
+    .vop_fsync                      = sfs_fsync,
+    .vop_reclaim                    = sfs_reclaim,
+    .vop_gettype                    = sfs_gettype,
+    .vop_tryseek                    = sfs_tryseek,
+    .vop_truncate                   = sfs_truncfile,
+};
+```
+inode_ops是VFS层定义的操作接口,通过将其函数指针设置为SFS层的函数,从而在VFS层对SFS层的调用时,屏蔽了下层...
 
 ## 设备层文件IO
 为了统一地访问设备,我们可以把一个设备看成一个文件,通过访问文件的接口来访问设备.目前实现了stdin设备文件文件、stdout设备文件、disk0设备.stdin设备就是键盘,stdout设备就是CONSOLE(串口、并口和文本显示器),而disk0设备是承载SFS文件系统的磁盘设备.下面我们逐一分析ucore是如何让用户把设备看成文件来访问.
@@ -398,7 +443,21 @@ dev_stdin_read(char *buf, size_t len) {
 ...略,详见kern/fs/devs/dev_disk0.c
 
 
-### 设备层文件IO与驱动程序的交互(以stdout_io为例)
+### 设备层文件IO与SFS的衔接
+???待完成
+### 设备层文件IO与驱动程序的衔接(以stdout_io为例)
+设备文件层初始化device(kern/fs/devs/dev_stdout.c):
+```
+static void stdout_device_init(struct device *dev) {
+    dev->d_blocks = 0;
+    dev->d_blocksize = 1;
+    dev->d_open = stdout_open;
+    dev->d_close = stdout_close;
+    dev->d_io = stdout_io;
+    dev->d_ioctl = stdout_ioctl;
+}
+```
+通过这些函数最终调用了驱动程序,完成真正的访问设备,以stdout_io为例:
 调用链(从dev_stdout.c开始看):
 ```
 stdout_io() => cputchar() =>
@@ -484,3 +543,20 @@ sfs_bmap_load_nolock函数将对应sfs_inode的第index个索引指向的block�
 
 - **为什么stdin有缓冲区与等待队列,而stdout却没有(dev_stdin.c、dev_stdout.c)??**  
 ???
+
+- **vnode与inode的关系?**  
+1.ucore中没有使用vnode命名.  
+2.参考网上部分说法:  
+传统的Unix既有v节点(vnode)也有i节点(inode),vnode的数据结构中包含了inode信息.但在Linux中没有使用vnode,使用了通用inode;   vnode("virtual node")仅在文件打开的时候才出现的,而inode定位文件在磁盘的位置,它的信息本身是存储在磁盘等上的,当打开文件的时候从磁盘上读入内存. => 从这个角度看sfs_inode就是vnode,sfs_disk_inode(都在sfs.h)就是inode  
+3.不过,ucore在VFS层有一个inode结构体,它可以看做是sfs_inode的包装,与2中所说的inode含义不同!
+
+- **SFS层与设备文件IO层是如何联系起来的??**  
+???
+
+- **如何表示硬链接??**  
+???
+
+- **真正理解文件描述符fd**  
+fd是文件在filemap中的索引值(见kern/fs/file.h 下结构体:struct file)
+
+- ****

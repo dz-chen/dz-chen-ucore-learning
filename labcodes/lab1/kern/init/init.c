@@ -15,9 +15,7 @@ static void lab1_switch_test(void);
 
 /***  操作系统的初始化 => 可参考:lab1实验指导书,"操作系统启动过程" ***/
 
-// 这部分涉及的内容较多,暂时没有看完所有相关细节!!!
-// ........................
-
+// lab1中,ucore OS的入口
 int kern_init(void) {
     extern char edata[], end[];                 //extern表示该变量是一个已经定义的外部变量
     memset(edata, 0, end - edata);

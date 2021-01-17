@@ -28,6 +28,7 @@
 #define T_SIMDERR               19  // SIMD floating point error
 
 /* Hardware IRQ numbers. We receive these as (IRQ_OFFSET + IRQ_xx) */
+// 注:IRQ即:中断请求
 #define IRQ_OFFSET              32  // IRQ 0 corresponds to int IRQ_OFFSET
 
 #define IRQ_TIMER               0
@@ -57,6 +58,14 @@ struct pushregs {
     uint32_t reg_eax;
 };
 
+
+
+/**
+ * trapframe与中断上下文的关系?
+ * 保存中断前的相关寄存器信息
+ * 段寄存器只需使用16位的选择子,所以另外16位设置为tf_paddingx !
+ * 注意下面的压栈顺序:tf_ss、tf_esp ....tf_regs
+ **/
 struct trapframe {
     struct pushregs tf_regs;
     uint16_t tf_gs;
@@ -67,17 +76,17 @@ struct trapframe {
     uint16_t tf_padding2;
     uint16_t tf_ds;
     uint16_t tf_padding3;
-    uint32_t tf_trapno;
+    uint32_t tf_trapno;        
     /* below here defined by x86 hardware */
-    uint32_t tf_err;
-    uintptr_t tf_eip;
+    uint32_t tf_err;        // tr_regs ....tf_err这部分内容调用中断处理程序时压栈,详见vectors.S和trapentry.S
+    uintptr_t tf_eip;     
     uint16_t tf_cs;
     uint16_t tf_padding4;
-    uint32_t tf_eflags;
+    uint32_t tf_eflags;    // tf_eip...tf_eflags这部分在执行INT 指令时由硬件压栈
     /* below here only when crossing rings, such as from user to kernel */
-    uintptr_t tf_esp;
+    uintptr_t tf_esp;   
     uint16_t tf_ss;
-    uint16_t tf_padding5;
+    uint16_t tf_padding5;  // tf_esp...tf_ss这部分在特权级切换时压栈
 } __attribute__((packed));
 
 void idt_init(void);

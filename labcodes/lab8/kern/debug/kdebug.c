@@ -11,7 +11,18 @@
 #include <kmonitor.h>
 #include <assert.h>
 
-#define STACKFRAME_DEPTH 20
+#define STACKFRAME_DEPTH 20                 // 栈最大深度
+
+/*********************************************************************************
+ *                              调试原理概述
+ * 1.ucore中,编译时的符号表信息会被加载到内存(见kernel.ld中 .stab段)
+ * 2.print_stackframe函数通过ebp链找到每个函数调用的栈帧
+ * 3.拿到每个栈帧中函数的返回地址(这里用eip表示,也可理解为当前函数被调用的位置+1)
+ * 4.根据eip值(地址),去符号表信息中查找信息(行号、eip在哪个函数中、被哪个函数调用等...)
+ * 5.根据调用链不断查找eip,从而显示所有函数堆栈信息!
+ * (关于stab及其格式,比较麻烦,这里的查找过程也暂未深入了解)
+ * *******************************************************************************/
+
 
 extern const struct stab __STAB_BEGIN__[];  // beginning of stabs table
 extern const struct stab __STAB_END__[];    // end of stabs table
@@ -19,12 +30,13 @@ extern const char __STABSTR_BEGIN__[];      // beginning of string table
 extern const char __STABSTR_END__[];        // end of string table
 
 /* debug information about a particular instruction pointer */
+/* eip所在函数的相关信息,信息是从编译结果的stab中获取! */
 struct eipdebuginfo {
     const char *eip_file;                   // source code filename for eip
     int eip_line;                           // source code line number for eip
     const char *eip_fn_name;                // name of function containing eip
     int eip_fn_namelen;                     // length of function's name
-    uintptr_t eip_fn_addr;                  // start address of function
+    uintptr_t eip_fn_addr;                  // start address of function,函数的起始地址(jmp xxx,xxx就是起始地址)
     int eip_fn_narg;                        // number of function arguments
 };
 
@@ -142,7 +154,7 @@ debuginfo_eip(uintptr_t addr, struct eipdebuginfo *info) {
     info->eip_fn_narg = 0;
 
     // find the relevant set of stabs
-    if (addr >= KERNBASE) {
+    if (addr >= KERNBASE) {                         // 0xC0000000
         stabs = __STAB_BEGIN__;
         stab_end = __STAB_END__;
         stabstr = __STABSTR_BEGIN__;
@@ -152,7 +164,7 @@ debuginfo_eip(uintptr_t addr, struct eipdebuginfo *info) {
         // user-program linker script, tools/user.ld puts the information about the
         // program's stabs (included __STAB_BEGIN__, __STAB_END__, __STABSTR_BEGIN__,
         // and __STABSTR_END__) in a structure located at virtual address USTAB.
-        const struct userstabdata *usd = (struct userstabdata *)USTAB;
+        const struct userstabdata *usd = (struct userstabdata *)USTAB;  // 即USERBASE:0x00200000
 
         // make sure that debugger (current process) can access this memory
         struct mm_struct *mm;
@@ -263,16 +275,17 @@ void
 print_kerninfo(void) {
     extern char etext[], edata[], end[], kern_init[];
     cprintf("Special kernel symbols:\n");
-    cprintf("  entry  0x%08x (phys)\n", kern_init);
-    cprintf("  etext  0x%08x (phys)\n", etext);
-    cprintf("  edata  0x%08x (phys)\n", edata);
+    cprintf("  entry  0x%08x (phys)\n", kern_init);    // 内核入口地址
+    cprintf("  etext  0x%08x (phys)\n", etext);        // 代码段基址
+    cprintf("  edata  0x%08x (phys)\n", edata);        // 数据段基址
     cprintf("  end    0x%08x (phys)\n", end);
-    cprintf("Kernel executable memory footprint: %dKB\n", (end - kern_init + 1023)/1024);
+    cprintf("Kernel executable memory footprint: %dKB\n", (end - kern_init + 1023)/1024); //内核的内存大小
 }
 
 /* *
  * print_debuginfo - read and print the stat information for the address @eip,
  * and info.eip_fn_addr should be the first address of the related function.
+ * 打印文件名、行号、函数名、等
  * */
 void
 print_debuginfo(uintptr_t eip) {
@@ -286,14 +299,13 @@ print_debuginfo(uintptr_t eip) {
         for (j = 0; j < info.eip_fn_namelen; j ++) {
             fnname[j] = info.eip_fn_name[j];
         }
-        fnname[j] = '\0';
-        cprintf("    %s:%d: %s+%d\n", info.eip_file, info.eip_line,
-                fnname, eip - info.eip_fn_addr);
+        fnname[j] = '\0';          // 文件名        , 行号         ,函数名 , 输入的eip相对于所在函数的偏移
+        cprintf("    %s:%d: %s+%d\n", info.eip_file, info.eip_line,fnname, eip - info.eip_fn_addr);
     }
 }
 
-static __noinline uint32_t
-read_eip(void) {
+// 读eip寄存器值
+static __noinline uint32_t read_eip(void) {
     uint32_t eip;
     asm volatile("movl 4(%%ebp), %0" : "=r" (eip));
     return eip;
@@ -335,17 +347,35 @@ read_eip(void) {
  * */
 void
 print_stackframe(void) {
-     /* LAB1 YOUR CODE : STEP 1 */
-     /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
-      * (2) call read_eip() to get the value of eip. the type is (uint32_t);
-      * (3) from 0 .. STACKFRAME_DEPTH
-      *    (3.1) printf value of ebp, eip
-      *    (3.2) (uint32_t)calling arguments [0..4] = the contents in address (uint32_t)ebp +2 [0..4]
-      *    (3.3) cprintf("\n");
-      *    (3.4) call print_debuginfo(eip-1) to print the C calling function name and line number, etc.
-      *    (3.5) popup a calling stackframe
-      *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
-      *                   the calling funciton's ebp = ss:[ebp]
-      */
+    /* LAB1 YOUR CODE : STEP 1 */
+    /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
+    * (2) call read_eip() to get the value of eip. the type is (uint32_t);
+    * (3) from 0 .. STACKFRAME_DEPTH
+    *    (3.1) printf value of ebp, eip
+    *    (3.2) (uint32_t)calling arguments [0..4] = the contents in address (uint32_t)ebp +2 [0..4]
+    *    (3.3) cprintf("\n");
+    *    (3.4) call print_debuginfo(eip-1) to print the C calling function name and line number, etc.
+    *    (3.5) popup a calling stackframe
+    *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
+    *                   the calling funciton's ebp = ss:[ebp]
+    */
+
+    // 注:bootasm.S中,ss段的基址设置为0,所以下面ebp的操作不用考虑ss(ebp存储的是相对ss的偏移)
+    uint32_t ebp=read_ebp();             
+
+    uint32_t eip=read_eip();
+    for(int i=0;i<STACKFRAME_DEPTH;i++){
+        if(ebp==0){                      // bootasm.S中设置ebp为0; 若到此处,说明到达栈底,应退出
+            cprintf("now stack is at bottom:ebp==0!\n");
+            break;
+        }                
+        cprintf("ebp:0x%08x eip:0x%08x ",ebp,eip);
+        uint32_t* args=(uint32_t*)ebp+2;  // 转换为指针+,以4字节为单位! 
+        cprintf("args:0x%08x 0x%08x 0x%08x 0x%08x\n",args[0],args[1],args[2],args[3]);
+        print_debuginfo(eip-1);    
+        eip=((uint32_t*)ebp)[1];          // 当前函数的返回地址(即上一个函数调用当前函数的地方)
+        ebp=((uint32_t*)ebp)[0];          // 返回到上一帧
+    }
+    
 }
 

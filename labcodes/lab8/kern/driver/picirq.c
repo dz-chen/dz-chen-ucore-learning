@@ -22,8 +22,11 @@ pic_setmask(uint16_t mask) {
     }
 }
 
-void
-pic_enable(unsigned int irq) {
+/**
+ * programmable interrupt controllers
+ * 通过中断控制器使能编号irq的设备(事件)产生中断
+ **/
+void pic_enable(unsigned int irq) {
     pic_setmask(irq_mask & ~(1 << irq));
 }
 

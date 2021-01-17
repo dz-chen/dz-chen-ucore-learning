@@ -97,8 +97,8 @@ serial_init(void) {
 
     // No modem controls
     outb(COM1 + COM_MCR, 0);
-    // Enable rcv interrupts
-    outb(COM1 + COM_IER, COM_IER_RDI);
+    // Enable rcv interrupts => 使能串口1接收字符后产生中断
+    outb(COM1 + COM_IER, COM_IER_RDI);          // outb:向IO端口写
 
     // Clear any preexisting overrun indications and interrupts
     // Serial port doesn't exist if COM_LSR returns 0xFF
@@ -107,6 +107,7 @@ serial_init(void) {
     (void) inb(COM1+COM_RX);
 
     if (serial_exists) {
+        // 通过中断控制器使能串口1中断
         pic_enable(IRQ_COM1);
     }
 }
@@ -417,6 +418,7 @@ static void
 kbd_init(void) {
     // drain the kbd buffer
     kbd_intr();
+    // 通过中断控制器使能键盘输入中断
     pic_enable(IRQ_KBD);
 }
 

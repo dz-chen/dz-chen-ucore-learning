@@ -2,6 +2,11 @@
 #define __LIBS_ATOMIC_H__
 
 /* Atomic operations that C can't guarantee us. Useful for resource counting etc.. */
+/***********************************************************************************
+ *                                   原子操作
+ * 通过单条指令完成
+ * *********************************************************************************/
+
 
 static inline void set_bit(int nr, volatile void *addr) __attribute__((always_inline));
 static inline void clear_bit(int nr, volatile void *addr) __attribute__((always_inline));

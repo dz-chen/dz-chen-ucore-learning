@@ -16,7 +16,7 @@
 // you should rewrite functions: `default_init`, `default_init_memmap`,
 // `default_alloc_pages`, `default_free_pages`.
 /*
- * Details of FFMA
+ * Details of FFMA(first fit memory allocate)
  * (1) Preparation:
  *  In order to implement the First-Fit Memory Allocation (FFMA), we should
  * manage the free memory blocks using a list. The struct `free_area_t` is used
@@ -93,98 +93,135 @@
  *      Try to merge blocks at lower or higher addresses. Notice: This should
  *  change some pages' `p->property` correctly.
  */
+
+
+/************************************************************************************
+ *                           默认的物理内存分配算法:first fit
+ * **********************************************************************************/
+
+
+// 空闲块链表 => 一个空闲块(区域)包含多个物理page
+// ucore实现时空闲链表结点按地址排序!!!
 free_area_t free_area;
 
-#define free_list (free_area.free_list)
-#define nr_free (free_area.nr_free)
+#define free_list (free_area.free_list)     // 空闲链表
+#define nr_free (free_area.nr_free)         // 总的空闲page个数(不是空闲区域个数)
 
-static void
-default_init(void) {
-    list_init(&free_list);
+
+// 初始化空闲链表
+static void default_init(void) {
+    list_init(&free_list);                  // 初始化空闲链表结点; free_list是一个空节点(它与链表上其他节点不同)
     nr_free = 0;
 }
 
-static void
-default_init_memmap(struct Page *base, size_t n) {
-    assert(n > 0);
-    struct Page *p = base;
-    for (; p != base + n; p ++) {
-        assert(PageReserved(p));
-        p->flags = p->property = 0;
-        set_page_ref(p, 0);
+
+/**
+ * 初始化一个连续的空闲区域,并将其加入空闲链表
+ * - base:空闲区域的起始地址(va) => 它不是真正的空闲区域起始地址,它是管理所有物理页的Page数组的起始地址!
+ * - n:空闲区域中物理页的个数
+ * */
+static void default_init_memmap(struct Page *base, size_t n) {
+    // 初始化每一个page(属性都转为0)
+    for(struct Page* p=base; p!=base+n;p++){
+        p->flags=0;
+        p->property=0;  
+        set_page_ref(p,0);  
     }
-    base->property = n;
+
+    // 初始化这个空闲区域的第一个page!!
+    base->property=n;
     SetPageProperty(base);
-    nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    nr_free+=n;
+    list_add_before(&free_list,&(base->page_link));  //这个空闲区域加入链表(只需加入区域第一个page中的链表项即可!)
 }
 
-static struct Page *
-default_alloc_pages(size_t n) {
-    assert(n > 0);
-    if (n > nr_free) {
-        return NULL;
-    }
-    struct Page *page = NULL;
-    list_entry_t *le = &free_list;
-    while ((le = list_next(le)) != &free_list) {
-        struct Page *p = le2page(le, page_link);
-        if (p->property >= n) {
-            page = p;
+/****
+ * 分配n个物理页
+ * 返回分配的区域的第一个page指针
+ * 注:返回的不是区域的首地址,而是该区域第一个page的描述结构的地址
+ * **/
+static struct Page *default_alloc_pages(size_t n) {
+    if(n>nr_free) return NULL;
+    // 遍历空闲链表,找到第一个拥有超过n个page的空闲区域
+    struct Page* page=NULL;
+    list_entry_t* le=list_next(&free_list);                // 注意free_list是一个空结点,不含page数据!!
+    while(le != &free_list){
+        struct Page* p=le2page(le,page_link);
+        if(p->property>=n){                                // 找到符合条件的空闲区域       
+            page=p;
             break;
         }
+        le=list_next(le);
     }
-    if (page != NULL) {
+
+    // 如果找到了满足条件的区域,修改这个区域的第一个page
+    if(page!=NULL){
+        if(page->property > n){                         // 空闲页数超过需求,需要将这个区域分为两个区域
+            struct Page* p=page+n;
+            p->property=page->property-n;
+            SetPageProperty(p);                         // 多余的page修改为空闲区域,设置其第一个page
+            list_add_after(&(page->page_link),&(p->page_link));
+        }
         list_del(&(page->page_link));
-        if (page->property > n) {
-            struct Page *p = page + n;
-            p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
-        nr_free -= n;
-        ClearPageProperty(page);
+        nr_free-=n;
+        ClearPageProperty(page);                        // 修改域第一个page,标志区域已经分配
     }
     return page;
 }
 
-static void
-default_free_pages(struct Page *base, size_t n) {
-    assert(n > 0);
-    struct Page *p = base;
-    for (; p != base + n; p ++) {
-        assert(!PageReserved(p) && !PageProperty(p));
-        p->flags = 0;
-        set_page_ref(p, 0);
+
+/***
+ * 释放从base开始的n个物理页;
+ * 释放后的区域加入空闲链表;如果可以合并,需要合并空闲区域
+ * 注:base不是该区域真正的地址,它只是描述该区域的结构体的地址
+ * **/
+static void default_free_pages(struct Page *base, size_t n) {
+    // 释放base开始的n个page
+    for(struct Page* p=base; p!=base+n;p++){
+        p->flags=0;
+        p->property=0;
+        set_page_ref(p,0);
     }
-    base->property = n;
-    SetPageProperty(base);
-    list_entry_t *le = list_next(&free_list);
-    while (le != &free_list) {
-        p = le2page(le, page_link);
-        le = list_next(le);
-        if (base + base->property == p) {
-            base->property += p->property;
+    base->property=n;
+    SetPageProperty(base);  
+
+    // 合并空闲区域
+    list_entry_t* le=list_next(&free_list);
+    while(le!=&free_list){
+        struct Page* p=le2page(le,page_link);
+        if(p+p->property==base){           // 合并前面的区域
+            p->property+=base->property;
+            ClearPageProperty(base);
+            base=p;             // 这样方便之后继续合并后面区域
+            list_del(&(p->page_link));            
+        }        
+        else if(base+base->property==p){   // 合并后面的区域
+            base->property+=p->property;
             ClearPageProperty(p);
             list_del(&(p->page_link));
         }
-        else if (p + p->property == base) {
-            p->property += base->property;
-            ClearPageProperty(base);
-            base = p;
-            list_del(&(p->page_link));
-        }
+
+        le=list_next(le);
     }
-    nr_free += n;
-    list_add(&free_list, &(base->page_link));
+
+    // 插入到空闲链表(注意ucore实现时链表结点按照地址排序)
+    le=list_next(&free_list);
+    while(le!=&free_list){
+        struct Page* p=le2page(le,page_link);
+        if(base+base->property<p) break;
+        le=list_next(le);
+    }
+    nr_free+=n;
+    list_add_before(le,&(base->page_link));
 }
 
-static size_t
-default_nr_free_pages(void) {
+// 返回整个空闲链表中所有空闲页个数
+static size_t default_nr_free_pages(void) {
     return nr_free;
 }
 
-static void
-basic_check(void) {
+// 被default_check调用
+static void basic_check(void) {
     struct Page *p0, *p1, *p2;
     p0 = p1 = p2 = NULL;
     assert((p0 = alloc_page()) != NULL);

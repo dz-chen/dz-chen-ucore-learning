@@ -10,7 +10,7 @@
 
 static inline bool
 __intr_save(void) {
-    if (read_eflags() & FL_IF) {
+    if (read_eflags() & FL_IF) {            // 判断EFLAS的中断屏蔽位
         intr_disable();
         return 1;
     }
@@ -24,7 +24,11 @@ __intr_restore(bool flag) {
     }
 }
 
+// 将EFLAGS中断屏蔽位信息保存到x中(0或者1)
+// 然后屏蔽中断
 #define local_intr_save(x)      do { x = __intr_save(); } while (0)
+
+// 使用x恢复EFLAGS的中断屏蔽位 => 使能或者继续保持中断屏蔽
 #define local_intr_restore(x)   __intr_restore(x);
 
 #endif /* !__KERN_SYNC_SYNC_H__ */

@@ -36,13 +36,13 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE:4096*1024,页表
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
- *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
- *                            |                                 |
+ *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE:0x38000000 前1MB是bootloader、BIOS等;
+ *                            |                                 | 然后是ucore; 然后是Page[]数组
  *     KERNBASE ------------> +---------------------------------+ 0xC0000000
  *                            |        Invalid Memory (*)       | --/--
  *     USERTOP -------------> +---------------------------------+ 0xB0000000
@@ -69,8 +69,8 @@
  * */
 
 /* All physical memory mapped at this address */
-#define KERNBASE            0xC0000000
-#define KMEMSIZE            0x38000000                  // the maximum amount of physical memory
+#define KERNBASE            0xC0000000                  // 内核的虚拟起始地址
+#define KMEMSIZE            0x38000000                  // 内核占用的物理内存字节数(不含用户空间)
 #define KERNTOP             (KERNBASE + KMEMSIZE)
 
 /* *
@@ -78,6 +78,7 @@
  * a pointer to the page directory itself, thereby turning the PD into a page
  * table, which maps all the PTEs (Page Table Entry) containing the page mappings
  * for the entire virtual address space into that 4 Meg region starting at VPT.
+ * VPT:页表的起始地址(va)
  * */
 #define VPT                 0xFAC00000
 
@@ -114,12 +115,24 @@ typedef pte_t swap_entry_t; //the pte can also be a swap entry
 #define E820_ARM            1       // address range memory
 #define E820_ARR            2       // address range reserved
 
+/**
+ * 结构体e820map描述符了物理内存的信息
+ * 在bootloader中通过BIOS探测物理内存,并将其按照emap820格式存放到固定位置(0x8000处),之后由os使用
+ * 探测过程见bootasm.S
+ * **/
 struct e820map {
-    int nr_map;
-    struct {
-        uint64_t addr;
-        uint64_t size;
-        uint32_t type;
+    int nr_map;          // 总的有多少个物理内存区域 => map[0]、map[1]....map[nr_map-1],最多E820MAX个
+    struct {             // 地址范围描述符(数组) => 一个数组,每个项描述了一段物理内存
+        uint64_t addr;   // 物理内存基址,8byte
+        uint64_t size;   // 物理内存大小,8byte
+        uint32_t type;   // 类型,4byte       => 见page_init()函数,会打印物理内存区域的类型
+        /************************ 关于上面type的取值解释如下
+         *  01h    memory, available to OS
+         *  02h    reserved, not available (e.g. system ROM, memory-mapped device)
+         *  03h    ACPI Reclaim Memory (usable by OS after reading ACPI tables)
+         *  04h    ACPI NVS Memory (OS is required to save this memory between NVS sessions)
+         *  other  not defined yet -- treat as Reserved
+         * *************************************************************/
     } __attribute__((packed)) map[E820MAX];
 };
 
@@ -127,12 +140,29 @@ struct e820map {
  * struct Page - Page descriptor structures. Each Page describes one
  * physical page. In kern/mm/pmm.h, you can find lots of useful functions
  * that convert Page to other data types, such as phyical address.
+ * 描述物理页的数据结构
+ * 一个空闲块由多个物理页组成
+ * 通过空闲链表链接空闲块(而不是页!!!)
  * */
 struct Page {
-    int ref;                        // page frame's reference counter
-    uint32_t flags;                 // array of flags that describe the status of the page frame
+    int ref;                        // 若某页表项设置了虚拟页到这个物理页的映射,ref会+1
+    uint32_t flags;                 // => 见PG_property、 PG_reserved
+    // flags有32bit,目前只用到两个bit
+    // bit 0(PG_reserved)表示此页是否被保留 =>PG_reserved为1:表示此页保留给操作系统使用,不能被分配、释放
+    //                                      PG_reserved为0:表示此页可正常分配、使用、释放
+    // bit 1(PG_property)表示此页是否为空闲区域的第一个page
+    //                                     =>PG_property为1:此页是一个空闲区域的第一个page,且可以被分配;
+    //                                       PG_property为0:如果此页是一个区域的第一个页,则此区域已经分配
+    //                                                      如果不是一个区域的第一个页,这个标志位没有意义               
+
     unsigned int property;          // the num of free block, used in first fit pm manager
+    // property用于记录某连续物理内存空闲块的大小(page个数),空闲块的第一个page才会使用这个字段 
+    // => 非第一个page需要设置为0!!  
+    // ===> 这种做法与redbase的记录管理非常相似....
+    
     list_entry_t page_link;         // free list link
+    // 双向链表page_link,连接连续的物理内存空闲块,空闲块的第一个page才会使用这个字段!! 连接的是空闲块而不是页帧!
+
     list_entry_t pra_page_link;     // used for pra (page replace algorithm)
     uintptr_t pra_vaddr;            // used for pra (page replace algorithm)
 };
@@ -141,6 +171,10 @@ struct Page {
 #define PG_reserved                 0       // if this bit=1: the Page is reserved for kernel, cannot be used in alloc/free_pages; otherwise, this bit=0 
 #define PG_property                 1       // if this bit=1: the Page is the head page of a free memory block(contains some continuous_addrress pages), and can be used in alloc_pages; if this bit=0: if the Page is the the head page of a free memory block, then this Page and the memory block is alloced. Or this Page isn't the head page.
 
+/*** 
+ * 下面操作:设置指定page的flag标志中某些位
+ *  这些位操作是原子的! => 见libs/atomic.h
+**/
 #define SetPageReserved(page)       set_bit(PG_reserved, &((page)->flags))
 #define ClearPageReserved(page)     clear_bit(PG_reserved, &((page)->flags))
 #define PageReserved(page)          test_bit(PG_reserved, &((page)->flags))
@@ -149,10 +183,16 @@ struct Page {
 #define PageProperty(page)          test_bit(PG_property, &((page)->flags))
 
 // convert list entry to page
+// 输入结点le,它对应page结构体的pae_link成员(member),据此得到整个结构体的指针
 #define le2page(le, member)                 \
     to_struct((le), struct Page, member)
 
-/* free_area_t - maintains a doubly linked list to record free (unused) pages */
+/**
+ * free_area_t - maintains a doubly linked list to record free (unused) pages 
+ * 描述空闲链表的数据结构
+ * - free_list:第一个空闲区域(链表项)
+ * - nr_free:链表中总共的空闲页数
+ * */
 typedef struct {
     list_entry_t free_list;         // the list header
     unsigned int nr_free;           // # of free pages in this free list

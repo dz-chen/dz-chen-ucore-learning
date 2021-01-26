@@ -54,7 +54,7 @@
  * (4) `default_alloc_pages`:
  *  Search for the first free block (block size >= n) in the free list and reszie
  * the block found, returning the address of this block as the address required by
- * `malloc`.
+ * `malloc`. 
  *  (4.1)
  *      So you should search the free list like this:
  *          list_entry_t le = &free_list;
@@ -101,6 +101,7 @@ free_area_t free_area;  // 包含双向空闲链表的结构体; 全局变量,�
 
 /* pmm_manager结构体中init的默认实现,初始化后的双向链表其实是环形,见list_init函数 */
 static void default_init(void) {
+    
     list_init(&free_list);
     nr_free = 0;
 }
@@ -152,7 +153,6 @@ static struct Page * default_alloc_pages(size_t n) {
         }
     }
     if (page != NULL) {                        //找到了匹配的物理页
-        list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;

@@ -53,6 +53,7 @@ void print_pgdir(void);
  * PADDR - takes a kernel virtual address (an address that points above KERNBASE),
  * where the machine's maximum 256MB of physical memory is mapped and returns the
  * corresponding physical address.  It panics if you pass it a non-kernel virtual address.
+ * 将内核虚拟地址转换成物理地址
  * */
 #define PADDR(kva) ({                                                   \
             uintptr_t __m_kva = (uintptr_t)(kva);                       \
@@ -65,6 +66,7 @@ void print_pgdir(void);
 /* *
  * KADDR - takes a physical address and returns the corresponding kernel virtual
  * address. It panics if you pass an invalid physical address.
+ * 输入物理地址,返回内核虚拟地址
  * */
 #define KADDR(pa) ({                                                    \
             uintptr_t __m_pa = (pa);                                    \
@@ -75,19 +77,20 @@ void print_pgdir(void);
             (void *) (__m_pa + KERNBASE);                               \
         })
 
-extern struct Page *pages;
+extern struct Page *pages;          // 见pmm.c
 extern size_t npage;
 
-static inline ppn_t
-page2ppn(struct Page *page) {
+// 输入page指针,返回其物理页号
+static inline ppn_t page2ppn(struct Page *page) {
     return page - pages;
 }
 
-static inline uintptr_t
-page2pa(struct Page *page) {
+// 输入page指针,返回该页的物理地址
+static inline uintptr_t page2pa(struct Page *page) {
     return page2ppn(page) << PGSHIFT;
 }
 
+// 输入物理地址,返回Page结构体指针
 static inline struct Page *
 pa2page(uintptr_t pa) {
     if (PPN(pa) >= npage) {
@@ -106,6 +109,7 @@ kva2page(void *kva) {
     return pa2page(PADDR(kva));
 }
 
+// 输入物理页号(或者物理地址),返回对应Page结构体指针
 static inline struct Page *
 pte2page(pte_t pte) {
     if (!(pte & PTE_P)) {
@@ -141,7 +145,9 @@ page_ref_dec(struct Page *page) {
     return page->ref;
 }
 
-extern char bootstack[], bootstacktop[];
+
+// 定义在entry.S中
+extern char bootstack[], bootstacktop[];      
 
 #endif /* !__KERN_MM_PMM_H__ */
 

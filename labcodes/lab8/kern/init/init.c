@@ -34,9 +34,9 @@ int kern_init(void) {
 
     grade_backtrace();          // 显示堆栈信息,最终调用print_stackframe()
 
-    pmm_init();                 // init physical memory management
+    pmm_init();                 // 初始化物理内存管理(=> 从调用pmm_init开始,进入地址映射的第三个阶段)
 
-    pic_init();                 // 初始化中断控制器(8259A)
+    pic_init();                 // 初始化中断控制器(8259A),programable interupt controller
     idt_init();                 // 初始化IDT(对比GDT的初始化,在bootasm.S)
 
     vmm_init();                 // init virtual memory management

@@ -41,6 +41,9 @@ while ((inb(0x1F7) & 0xC0) != 0x40)
 1.elfhdr结构体描述ELF头; proghdr结构体描述段头部表,一个段对应一个proghdr
 2.这里一个page对应8个扇区,共4096byte
 3.为什么ELFHDR从0x10000开始?
+    => 这个值只是人为定义,不一定必须是这个值,只要满足它在bootloader以上即可
+      ...详见内布局:https://chyyuu.gitbooks.io/ucore_os_docs/content/lab2_figs/image003.png
+      注意ELFHDR加载到1MB以下; 而OS加载到1MB以上(由kernel.ld指定)
 4.bootmain中elfhdr为什么从磁盘的第一个扇区算起(读第一页时offset为0),第一个扇区不是bootloader吗?
     => 见redseg函数,计算secno时自动+1,从而跳过了MBR.也就是说offset是从第二个扇区算起
 ************************************************************************************************/
@@ -129,6 +132,7 @@ void bootmain(void) {
 
     // call the entry point from the ELF header => 进入ucore操作系统
     // note: does not return
+    // 入口是kern_entry()函数,在kernel.ld中指定
     ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
 
 bad:

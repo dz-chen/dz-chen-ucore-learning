@@ -146,11 +146,15 @@ struct segdesc {
         (unsigned) (base) >> 24                             \
     }
 
-/* task state segment format (as described by the Pentium architecture book) */
+/**
+ * task state segment format (as described by the Pentium architecture book) 
+ * 任务状态段,保存线程切换时的现场信息
+ * ucore中主要使用其中的ss0、esp0
+ * */
 struct taskstate {
     uint32_t ts_link;       // old ts selector
-    uintptr_t ts_esp0;      // stack pointers and segment selectors
-    uint16_t ts_ss0;        // after an increase in privilege level
+    uintptr_t ts_esp0;      // stack pointers and segment selectors (CPL=0时的栈顶指针)
+    uint16_t ts_ss0;        // after an increase in privilege level (CPL=0时的堆栈段选择子)
     uint16_t ts_padding1;
     uintptr_t ts_esp1;
     uint16_t ts_ss1;
@@ -203,9 +207,11 @@ struct taskstate {
 // use PGADDR(PDX(la), PTX(la), PGOFF(la)).
 
 // page directory index
+// 给定虚拟地址(va/la),返回它对应的页目录表索引
 #define PDX(la) ((((uintptr_t)(la)) >> PDXSHIFT) & 0x3FF)
 
 // page table index
+// 给定虚拟地址(va/la),返回它对应的页表索引(不过要先查页目录表,再查页表)
 #define PTX(la) ((((uintptr_t)(la)) >> PTXSHIFT) & 0x3FF)
 
 // page number field of address
@@ -215,10 +221,13 @@ struct taskstate {
 #define PGOFF(la) (((uintptr_t)(la)) & 0xFFF)
 
 // construct linear address from indexes and offset
+// 根据页目录表索引、页表索引、页内偏移构造一个虚拟地址
 #define PGADDR(d, t, o) ((uintptr_t)((d) << PDXSHIFT | (t) << PTXSHIFT | (o)))
 
 // address in page table or page directory entry
+// 返回二级页表项pte存储的物理页号
 #define PTE_ADDR(pte)   ((uintptr_t)(pte) & ~0xFFF)
+// 返回一级页表项pde存储的物理页号
 #define PDE_ADDR(pde)   PTE_ADDR(pde)
 
 /* page directory and page table constants */
@@ -227,7 +236,7 @@ struct taskstate {
 
 #define PGSIZE          4096                    // bytes mapped by a page
 #define PGSHIFT         12                      // log2(PGSIZE)
-#define PTSIZE          (PGSIZE * NPTEENTRY)    // bytes mapped by a page directory entry
+#define PTSIZE          (PGSIZE * NPTEENTRY)    // bytes mapped by a page directory entry = 4096*1024
 #define PTSHIFT         22                      // log2(PTSIZE)
 
 #define PTXSHIFT        12                      // offset of PTX in a linear address

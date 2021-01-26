@@ -156,10 +156,11 @@ ltr(uint16_t sel) {
     asm volatile ("ltr %0" :: "r" (sel) : "memory");
 }
 
+// 读取EFLAGS寄存器
 static inline uint32_t
 read_eflags(void) {
     uint32_t eflags;
-    asm volatile ("pushfl; popl %0" : "=r" (eflags));
+    asm volatile ("pushfl; popl %0" : "=r" (eflags));       // pushf:将EFLAGS寄存器压栈
     return eflags;
 }
 
@@ -199,6 +200,7 @@ rcr2(void) {
     return cr2;
 }
 
+// 返回cr3寄存器的内容(页目录表的物理地址)
 static inline uintptr_t
 rcr3(void) {
     uintptr_t cr3;
@@ -206,6 +208,7 @@ rcr3(void) {
     return cr3;
 }
 
+// 在TLB中取消虚拟地址addr对应的项
 static inline void
 invlpg(void *addr) {
     asm volatile ("invlpg (%0)" :: "r" (addr) : "memory");

@@ -35,7 +35,8 @@ static inline void __list_del(list_entry_t *prev, list_entry_t *next) __attribut
 
 /* *
  * list_init - initialize a new entry
- * @elm:        new entry to be initialized
+ * elm:        new entry to be initialized
+ * prev、next都指向自身 => 保证是双向循环链表
  * */
 static inline void
 list_init(list_entry_t *elm) {

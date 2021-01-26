@@ -24,6 +24,7 @@
  * privilege level change happens. But only the fields SS0 and ESP0 are useful
  * in our os kernel.
  *
+ * 
  * The field SS0 contains the stack segment selector for CPL = 0, and the ESP0
  * contains the new ESP value for CPL = 0. When an interrupt happens in protected
  * mode, the x86 CPU will look in the TSS for SS0 and ESP0 and load their value
@@ -65,7 +66,7 @@ const struct pmm_manager *pmm_manager;
  * vpd is set bellow.
  * */
 pte_t * const vpt = (pte_t *)VPT;           // 32位整数,VPT的起始虚拟地址
-pde_t * const vpd = (pde_t *)(PGADDR(PDX(VPT), PDX(VPT), 0));  // 页目录表的虚拟地址位置(起始就是vpt的起始地址)
+pde_t * const vpd = (pde_t *)(PGADDR(PDX(VPT), PDX(VPT), 0));  // 页目录表的虚拟地址位置
 
 /* *
  * Global Descriptor Table:
@@ -382,7 +383,7 @@ pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create) {
                             // (3) check if creating is needed, then alloc page for page table
                             // CAUTION: this page is used for page table, not for common data page
                             // (4) set page reference
-            uintptr_t pa = 0; // (5) get linear address of page => physical address ?? --by cdz
+            uintptr_t pa = 0; // (5) get linear address of page 
                             // (6) clear page content using memset
                             // (7) set page directory entry's permission
         }

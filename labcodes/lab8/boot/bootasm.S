@@ -2,7 +2,7 @@
 
 # ######################################  bootloader源码  #########################################
 # 0.流程概述
-#    打开A20 => 内存检测 => 使能保护模式 
+#    打开A20 => 物理内存检测(此时是实模式!) => 使能保护模式 
 #    => 跳转到32位保护模式代码 => 设置段寄存器及堆栈指针 => 调用bootmain
 # 1.BIOS将其读取到0x7c00开始处,然后执行这段代码
 # 2.这段汇编执行完后,调用bootloader的C源码部分bootmain
@@ -65,22 +65,25 @@ seta20.2:
     movb $0xdf, %al                                 # 0xdf -> port 0x60
     outb %al, $0x60                                 # 0xdf = 11011111, means set P2's A20 bit(the 1 bit) to 1
 
+# 物理内存探测 
+# => 通过int 15中断让BIOS探测,然后将信息按照e820map(memlayout.h)结构存放在物理内存0x8000开始处
+# int 15中断的参数以及返回值详细信息见lab2实验笔记
 probe_memory:
-    movl $0, 0x8000
-    xorl %ebx, %ebx
-    movw $0x8004, %di
+    movl $0, 0x8000         # 对0x8000处的的4字节置0 => 即将e820map结构体的nr_map字段置0; 注意此时处于实模式!
+    xorl %ebx, %ebx         # ebx置0
+    movw $0x8004, %di       # INT 15h中断调用后,BIOS返回的地址范围描述符将存放在物理地址0x8004开始(紧接着4字节的nr_map字段);见e820map结构体
 start_probe:
-    movl $0xE820, %eax
-    movl $20, %ecx
-    movl $SMAP, %edx
-    int $0x15
-    jnc cont
-    movw $12345, 0x8000
+    movl $0xE820, %eax      # 设置INT 15h中断调用的参数(int 15时eax存放参数; e820表示探测内存)
+    movl $20, %ecx          # 设置地址范围描述符的大小为20字节,其大小等于struct e820map的成员变量map[0]的大小
+    movl $SMAP, %edx        # 设置edx为534D4150h(即4个ASCII字符"SMAP"),这是一个约定
+    int $0x15               # 调用int 0x15中断,要求BIOS返回一个用地址范围描述符表示的内存段信息(返回结果的地址为0x8004,已经存入%di); 
+    jnc cont                # jnc即:CF!=1; 如果eflags的CF位为0,则表示还有内存段需要探测 => 跳转到cont,重新设置int 15h的返回地址,继续探测...; CF是进位标志
+    movw $12345, 0x8000     # 探测有问题,结束探测
     jmp finish_probe
 cont:
-    addw $20, %di
-    incl 0x8000
-    cmpl $0, %ebx
+    addw $20, %di           # 设置下一个BIOS返回的映射地址描述符的起始地址(0x8000+20,因为一个map[i]占20字节)
+    incl 0x8000             # 递增struct e820map的成员变量nr_map
+    cmpl $0, %ebx           # 如果INT0x15返回的ebx为零,表示探测结束,否则继续探测
     jnz start_probe
 finish_probe:
 

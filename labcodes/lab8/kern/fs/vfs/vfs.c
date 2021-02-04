@@ -22,9 +22,11 @@ __alloc_fs(int type) {
     return fs;
 }
 
-// vfs_init -  vfs initialize
-void
-vfs_init(void) {
+/**
+ * vfs_init -  vfs initialize
+ * 初始化VFS
+ */ 
+void vfs_init(void) {
     sem_init(&bootfs_sem, 1);
     vfs_devlist_init();
 }

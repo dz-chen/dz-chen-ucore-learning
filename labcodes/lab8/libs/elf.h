@@ -32,12 +32,12 @@ struct elfhdr {
     uint16_t e_machine;   // 3=x86, 4=68K, etc.
     uint32_t e_version;   // file version, always 1
     uint32_t e_entry;     // entry point if executable  => (如果是可执行文件),这个字段指出程序入口!
-    uint32_t e_phoff;     // file position of program header or 0
+    uint32_t e_phoff;     // 段头部表距离文件头的偏移
     uint32_t e_shoff;     // file position of section header or 0
     uint32_t e_flags;     // architecture-specific flags, usually 0
     uint16_t e_ehsize;    // size of this elf header
     uint16_t e_phentsize; // size of an entry in program header
-    uint16_t e_phnum;     // number of entries in program header or 0
+    uint16_t e_phnum;     // 段的个数(即段头部表中有几个proghdr数组) 
     uint16_t e_shentsize; // size of an entry in section header
     uint16_t e_shnum;     // number of entries in section header or 0
     uint16_t e_shstrndx;  // section number that contains section name strings
@@ -46,13 +46,13 @@ struct elfhdr {
 /* program section header */
 // proghdr对应段头部表中的一个条目; 段头部表就是一个proghdr数组
 struct proghdr {
-    uint32_t p_type;   // loadable code or data, dynamic linking info,etc.  => 段类型
-    uint32_t p_offset; // file offset of segment                            => 段相对ELF文件头的偏移值
-    uint32_t p_va;     // virtual address to map segment                    => 段的第一个字节的虚拟内存地址
+    uint32_t p_type;   // 段类型
+    uint32_t p_offset; // 段相对ELF文件头的偏移值
+    uint32_t p_va;     // 段的第一个字节的虚拟内存地址
     uint32_t p_pa;     // physical address, not used
-    uint32_t p_filesz; // size of segment in file
-    uint32_t p_memsz;  // size of segment in memory (bigger if contains bss）=> 段在内存中占用的字节数
-    uint32_t p_flags;  // read/write/execute bits
+    uint32_t p_filesz; // 此段在文件中的大小
+    uint32_t p_memsz;  // 段在内存中占用的字节数 (bigger if contains bss)
+    uint32_t p_flags;  // read/write/execute bits 
     uint32_t p_align;  // required alignment, invariably hardware page size
 };
 

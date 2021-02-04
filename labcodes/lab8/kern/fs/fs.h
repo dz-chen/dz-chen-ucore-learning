@@ -11,7 +11,7 @@
 
 #define SWAP_DEV_NO         1       // 交换分区
 #define DISK0_DEV_NO        2       // 第一块磁盘
-#define DISK1_DEV_NO        3
+#define DISK1_DEV_NO        3       // 第二块磁盘
 
 void fs_init(void);
 void fs_cleanup(void);
@@ -25,8 +25,8 @@ struct file;
  */
 struct files_struct {
     struct inode *pwd;      // 进程当前执行目录的内存指针 (print work directory)
-    struct file *fd_array;  // 进程打开文件的数组
-    int files_count;        // 访问此文件的线程数
+    struct file *fd_array;  // 进程打开文件的数组(或者就叫打开文件表)
+    int files_count;        // 访问此文件的线程数(应该是同属于一个进程的线程数)
     semaphore_t files_sem;  // 确保对进程控制块中files_struct的互斥访问
 };
 

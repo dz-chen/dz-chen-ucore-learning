@@ -4,14 +4,19 @@
 #include <assert.h>
 #include <default_sched.h>
 
-static void
-RR_init(struct run_queue *rq) {
+/*****************************************************************************
+ *                     Round Robin(轮询)调度
+ * ****************************************************************************/
+
+// 初始化调度器(主要是初始化就绪队列)
+static void RR_init(struct run_queue *rq) {
     list_init(&(rq->run_list));
     rq->proc_num = 0;
 }
 
-static void
-RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
+
+// 将线程proc插入就绪队列rq的末尾
+static void RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
     assert(list_empty(&(proc->run_link)));
     list_add_before(&(rq->run_list), &(proc->run_link));
     if (proc->time_slice == 0 || proc->time_slice > rq->max_time_slice) {
@@ -21,15 +26,15 @@ RR_enqueue(struct run_queue *rq, struct proc_struct *proc) {
     rq->proc_num ++;
 }
 
-static void
-RR_dequeue(struct run_queue *rq, struct proc_struct *proc) {
+// 从就绪队列rq中删除线程proc
+static void RR_dequeue(struct run_queue *rq, struct proc_struct *proc) {
     assert(!list_empty(&(proc->run_link)) && proc->rq == rq);
     list_del_init(&(proc->run_link));
     rq->proc_num --;
 }
 
-static struct proc_struct *
-RR_pick_next(struct run_queue *rq) {
+// 返回就绪队列的队头元素(如果队列空,返回NULL)
+static struct proc_struct *RR_pick_next(struct run_queue *rq) {
     list_entry_t *le = list_next(&(rq->run_list));
     if (le != &(rq->run_list)) {
         return le2proc(le, run_link);
@@ -37,16 +42,18 @@ RR_pick_next(struct run_queue *rq) {
     return NULL;
 }
 
-static void
-RR_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
+// 每一个节拍点,正在执行的线程的时间片-1
+// 参数proc通常是当前正在执行的线程
+static void RR_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
     if (proc->time_slice > 0) {
         proc->time_slice --;
     }
-    if (proc->time_slice == 0) {
+    if (proc->time_slice == 0) {        // 时间片为0后,它需要被切换,故need_resched为1
         proc->need_resched = 1;
     }
 }
 
+// sched.c sched_init()中被使用
 struct sched_class default_sched_class = {
     .name = "RR_scheduler",
     .init = RR_init,

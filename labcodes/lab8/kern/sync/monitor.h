@@ -66,25 +66,37 @@
 
 typedef struct monitor monitor_t;
 
+// 条件变量的数据结构
 typedef struct condvar{
-    semaphore_t sem;        // the sem semaphore  is used to down the waiting proc, and the signaling proc should up the waiting proc
-    int count;              // the number of waiters on condvar
-    monitor_t * owner;      // the owner(monitor) of this condvar
+    semaphore_t sem;        // 通过这个sem,条件变量可直接通过信号量的P、V操作来阻塞、唤醒线程(即实现wait、signal)
+    int count;              // 等待条件变量的线程数
+    monitor_t * owner;      // 这个条件变量属于哪个管程
 } condvar_t;
 
+// 管程的数据结构(一个管程可包含多个条件变量)
 typedef struct monitor{
-    semaphore_t mutex;      // the mutex lock for going into the routines in monitor, should be initialized to 1
-    semaphore_t next;       // the next semaphore is used to down the signaling proc itself, and the other OR wakeuped waiting proc should wake up the sleeped signaling proc.
-    int next_count;         // the number of of sleeped signaling proc
-    condvar_t *cv;          // the condvars in monitor
+    semaphore_t mutex;      // 互斥信号量,用于保证一次只有一个线程进入管程
+    semaphore_t next;       // 这个next用于组织管程中所有由于发出了signal而的阻塞的线程(这些线程就在next的队列上)
+    int next_count;         // 由于发出了signal而的阻塞的线程个数(A通过signal唤醒B,则S自身必须被阻塞)
+    condvar_t *cv;          // 条件变量数组=>一个管程可有多个条件变量; 
+                            //   通过条件变量来组织阻塞线程(条件变量中有信号量,ucore其实是通过信号量来实现wait、signal)
 } monitor_t;
 
 // Initialize variables in monitor.
 void     monitor_init (monitor_t *cvp, size_t num_cv);
-// Unlock one of threads waiting on the condition variable. 
-void     cond_signal (condvar_t *cvp);
-// Suspend calling thread on a condition variable waiting for condition atomically unlock mutex in monitor,
-// and suspends calling thread on conditional variable after waking up locks mutex.
-void     cond_wait (condvar_t *cvp);
+
+/**
+ * 条件变量cvp执行wait()操作 
+ * => 阻塞当前线程(顺便也会唤醒一个其他线程)
+ */  
+void     cond_wait (condvar_t *cvp);      // 阻塞线程
+
+
+/**
+ * 条件变量cvp执行signal()操作 
+ * 唤醒一个等待条件变量的线程(顺便也会阻塞当前线程)
+ */
+void     cond_signal (condvar_t *cvp);   //  唤醒线程
+
      
 #endif /* !__KERN_SYNC_MONITOR_CONDVAR_H__ */

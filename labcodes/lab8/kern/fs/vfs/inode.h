@@ -26,14 +26,20 @@ struct iobuf;
  * vfs_open() and vfs_close(). Code above the VFS layer should not
  * need to worry about it.
  */
-
-
  // 注:union 维护足够的空间来置放多个数据成员中的"一种",而不是为每一个数据成员配置空间
 
+/**
+ * inode是对磁盘文件的抽象
+ * 它主要是对sfs_inode的包装(ucore中的vnode)
+ * 补充:网络资料中经常提到vode、inode;
+ *      1.inode就是磁盘上的文件元数据,vnode是将inode调入内存后对inode的包装
+ *      2.对ucore而言:sfs_disk_inode就是inode,sfs_inode就是vnode
+ *      3.而这里vfs层的struct inode只是对SFS层的inode(sfs_inode)的包装,可以将他们都看做inode
+ */ 
 struct inode {
     union {                                   // 包含不同文件系统特定inode信息的union成员变量
         struct device __device_info;          // 设备文件系统内存inode信息 => 其他IO设备
-        struct sfs_inode __sfs_inode_info;    // SFS文件系统内存inode信息 => 普通磁盘文件?
+        struct sfs_inode __sfs_inode_info;    // SFS文件系统内存inode信息 => 普通磁盘文件
     } in_info;
     enum {
         inode_type_device_info = 0x1234,
@@ -175,6 +181,8 @@ void inode_kill(struct inode *node);
  *                      refers to. May destroy PATHNAME. Should increment
  *                      refcount on inode handed back.
  */
+
+// inode_ops是对常规文件、目录、设备文件所有操作的一个抽象表示
 struct inode_ops {
     unsigned long vop_magic;
     int (*vop_open)(struct inode *node, uint32_t open_flags);

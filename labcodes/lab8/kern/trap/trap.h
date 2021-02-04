@@ -46,7 +46,10 @@
 #define T_SWITCH_TOU                120    // user/kernel switch
 #define T_SWITCH_TOK                121    // user/kernel switch
 
-/* registers as pushed by pushal */
+/****
+ * registers as pushed by pushal
+ *  pushal即: Push All General-Purpose Registers => 将所有通用寄存器压栈
+ * */
 struct pushregs {
     uint32_t reg_edi;
     uint32_t reg_esi;
@@ -78,7 +81,7 @@ struct trapframe {
     uint16_t tf_padding3;
     uint32_t tf_trapno;        
     /* below here defined by x86 hardware */
-    uint32_t tf_err;        // tr_regs ....tf_err这部分内容调用中断处理程序时压栈,详见vectors.S和trapentry.S
+    uint32_t tf_err;        // tf_regs ....tf_err这部分内容调用中断处理程序时压栈,详见vectors.S和trapentry.S
     uintptr_t tf_eip;     
     uint16_t tf_cs;
     uint16_t tf_padding4;

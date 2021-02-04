@@ -38,13 +38,29 @@
  * essentially no allocation space overhead.
  */
 
+/**********************************************************************************************
+ * 										SLOB内存分配器
+ * 0.为什么需要slob?
+ * 	 => default_pmm.c中的first-fit算法是以page为单位分配的.但是分配对象时往往要不了那么多内存,
+ * 		所以需要更细粒度的内存分配,slob就是在first-fit基础上的分配器...
+ * 1.这里一个slob对应一个page(虽然对应多个page也行)
+ * 2.ucore在实现上与linux的slob尚有一点区别:
+ * 		完整的slob参考:https://lwn.net/Articles/157944/
+ * 		对于这里的实现来说有一点点参考价值的文档:http://www.linuxidc.com/Linux/2012-07/64107.htm
+ * 3.ucore中分配的object(小对象,即下面的block)是8字节对齐的!
+ * 4.这里大对象分配时类似于buddy系统,分配的页面数必须是2的n次方,且2^n-1 < size < 2^n,size是对象大小
+ *   大对象分配时就是page对齐的,即从一个全新的page开始,没用完的page之后不会被小对象使用
+ * 
+ * 
+ * 
+ * ********************************************************************************************/
 
 //some helper
-#define spin_lock_irqsave(l, f) local_intr_save(f)
-#define spin_unlock_irqrestore(l, f) local_intr_restore(f)
-typedef unsigned int gfp_t;
+#define spin_lock_irqsave(l, f) local_intr_save(f)		     // 关中断,EFLAGS中断屏蔽为保存到f中
+#define spin_unlock_irqrestore(l, f) local_intr_restore(f)  // 开中断,从f恢复EFLAGS的中断屏蔽位
+typedef unsigned int gfp_t;			// get free page
 #ifndef PAGE_SIZE
-#define PAGE_SIZE PGSIZE
+#define PAGE_SIZE PGSIZE			// 4096
 #endif
 
 #ifndef L1_CACHE_BYTES
@@ -52,20 +68,33 @@ typedef unsigned int gfp_t;
 #endif
 
 #ifndef ALIGN
+/**
+ * 计算addr的size字节对齐的地址
+ * addr通常是虚拟地址,size是2的次方
+ * 举例:如果size是页面大小,那么ALIGN计算的就是addr所在页的起始地址
+ */ 
 #define ALIGN(addr,size)   (((addr)+(size)-1)&(~((size)-1))) 
 #endif
 
-
+/**
+ * 1.这里一个block就是一个object之意(小于一个page)
+ * 2.所有小于一个页的object/block用slob_block来描述
+ * 3.一个slob(ucore占用一个page)包含若干object
+ * 4.大于1个page的object/block用bigblock结构体描述
+ */ 
 struct slob_block {
-	int units;
+	int units;				// 
 	struct slob_block *next;
 };
 typedef struct slob_block slob_t;
 
-#define SLOB_UNIT sizeof(slob_t)
+#define SLOB_UNIT sizeof(slob_t)		// slob结点的字节数
 #define SLOB_UNITS(size) (((size) + SLOB_UNIT - 1)/SLOB_UNIT)
-#define SLOB_ALIGN L1_CACHE_BYTES
+#define SLOB_ALIGN L1_CACHE_BYTES      // slob按照8字节对齐
 
+/**
+ * 大于一个page的对象(object/block)
+ */ 
 struct bigblock {
 	int order;
 	void *pages;
@@ -73,11 +102,20 @@ struct bigblock {
 };
 typedef struct bigblock bigblock_t;
 
-static slob_t arena = { .next = &arena, .units = 1 };
-static slob_t *slobfree = &arena;
+// slobfree是小对象的空闲链表
+static slob_t arena = { .next = &arena, .units = 1 };   // next指向自己,从而初始化为循环链表
+static slob_t *slobfree = &arena;		// 空闲slob链表(小对象)
+
+// 
 static bigblock_t *bigblocks;
 
 
+/**
+ * 调用alloc_pages()分配2的order次方个物理页
+ * 返回第一个页的起始虚拟地址
+ * - gfp:没用上
+ * - order:
+ */ 
 static void* __slob_get_free_pages(gfp_t gfp, int order)
 {
   struct Page * page = alloc_pages(1 << order);
@@ -86,8 +124,14 @@ static void* __slob_get_free_pages(gfp_t gfp, int order)
   return page2kva(page);
 }
 
+// 分配一个物理页,返回页面虚拟地址
 #define __slob_get_free_page(gfp) __slob_get_free_pages(gfp, 0)
 
+
+/**
+ * 释放虚拟地址kva对应页面开始的2^order个页面
+ * 且kva是page对齐的,即它是某个page的起始地址
+ */ 
 static inline void __slob_free_pages(unsigned long kva, int order)
 {
   free_pages(kva2page(kva), 1 << order);
@@ -95,16 +139,23 @@ static inline void __slob_free_pages(unsigned long kva, int order)
 
 static void slob_free(void *b, int size);
 
+/**
+ * 分配slob?
+ * - size:请求分配的内存大小(不大于1个page)
+ * - gfp:没用上
+ * - align:多少字节对齐
+ */ 
 static void *slob_alloc(size_t size, gfp_t gfp, int align)
 {
   assert( (size + SLOB_UNIT) < PAGE_SIZE );
 
 	slob_t *prev, *cur, *aligned = 0;
 	int delta = 0, units = SLOB_UNITS(size);
-	unsigned long flags;
+	unsigned long flags;	// 用于保存中断标志位
 
 	spin_lock_irqsave(&slob_lock, flags);
 	prev = slobfree;
+	// 从空闲slob链表中找
 	for (cur = prev->next; ; prev = cur, cur = cur->next) {
 		if (align) {
 			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
@@ -186,41 +237,49 @@ static void slob_free(void *block, int size)
 
 
 
-void
-slob_init(void) {
+void slob_init(void) {
   cprintf("use SLOB allocator\n");
 }
 
-inline void 
-kmalloc_init(void) {
+inline void kmalloc_init(void) {
     slob_init();
     cprintf("kmalloc_init() succeeded!\n");
 }
 
-size_t
-slob_allocated(void) {
+size_t slob_allocated(void) {
   return 0;
 }
 
-size_t
-kallocated(void) {
+size_t kallocated(void) {
    return slob_allocated();
 }
 
+/**
+ * 计算size字节要占2^order个的物理页
+ * 返回order(order是指数)
+ * 注:可见,这里大对象分配时类似于buddy系统,分配的页面数必须是2的n次方,且2^n-1 < size < 2^n
+ */ 
 static int find_order(int size)
 {
 	int order = 0;
-	for ( ; size > 4096 ; size >>=1)
+	for ( ; size > 4096 ; size >>=1)  // >>= 表示右移并赋值
 		order++;
 	return order;
 }
 
+/**
+ * 分配大小为size字节的物理内存(被kmalloc调用)
+ * => 返回对应内存区域的起始虚拟地址va
+ * - size:要分配的字节数
+ * - gfp:
+ */ 
 static void *__kmalloc(size_t size, gfp_t gfp)
 {
 	slob_t *m;
 	bigblock_t *bb;
 	unsigned long flags;
 
+	// 请求分配的内存小于1个page(- SLOB_UNIT是因为第一个slob作为头结点?)
 	if (size < PAGE_SIZE - SLOB_UNIT) {
 		m = slob_alloc(size + SLOB_UNIT, gfp, 0);
 		return m ? (void *)(m + 1) : 0;
@@ -245,13 +304,20 @@ static void *__kmalloc(size_t size, gfp_t gfp)
 	return 0;
 }
 
-void *
-kmalloc(size_t size)
+/**
+ * 分配大小为size字节的物理内存
+ * => 返回对应内存区域的起始虚拟地址va
+ * (!!!内存分配的统一接口)
+ * */
+void *kmalloc(size_t size)
 {
   return __kmalloc(size, 0);
 }
 
 
+/**
+ * 释放虚拟地址block处的那个对象(object)
+ */ 
 void kfree(void *block)
 {
 	bigblock_t *bb, **last = &bigblocks;
@@ -260,22 +326,26 @@ void kfree(void *block)
 	if (!block)
 		return;
 
+	// 1.如果虚拟地址block与page起始地址对齐(也就是说这个对象/ojbect起始地址恰好是某个page的开始)
+	//   => 检查大对象链表,确定要释放的是否为大对象....
+	// 解释:(PAGE_SIZE-1)的高20bit为0,低12bit为1; &结果为0则说明block的低12bit为0,所以block是的页起始地址
 	if (!((unsigned long)block & (PAGE_SIZE-1))) {
-		/* might be on the big block list */
 		spin_lock_irqsave(&block_lock, flags);
+		// might be on the big block list  => 遍历大对象链表
 		for (bb = bigblocks; bb; last = &bb->next, bb = bb->next) {
-			if (bb->pages == block) {
+			if (bb->pages == block) {		// 说明要释放的是某个大对象
 				*last = bb->next;
 				spin_unlock_irqrestore(&block_lock, flags);
-				__slob_free_pages((unsigned long)block, bb->order);
-				slob_free(bb, sizeof(bigblock_t));
+				__slob_free_pages((unsigned long)block, bb->order);  // 释放大对象
+				slob_free(bb, sizeof(bigblock_t));					 // 释放该大对象的描述结构??
 				return;
 			}
 		}
 		spin_unlock_irqrestore(&block_lock, flags);
 	}
 
-	slob_free((slob_t *)block - 1, 0);
+	// 2.控制流走到这里,释放的对象是小对象(无论起始地址是否与page对齐)
+	slob_free((slob_t *)block - 1, 0);		// 释放小对象
 	return;
 }
 

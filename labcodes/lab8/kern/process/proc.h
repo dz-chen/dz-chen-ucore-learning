@@ -7,13 +7,13 @@
 #include <memlayout.h>
 #include <skew_heap.h>
 
-
 // process's state in his life cycle
+// 线程状态
 enum proc_state {
-    PROC_UNINIT = 0,  // uninitialized
-    PROC_SLEEPING,    // sleeping
-    PROC_RUNNABLE,    // runnable(maybe running)
-    PROC_ZOMBIE,      // almost dead, and wait parent proc to reclaim his resource
+    PROC_UNINIT = 0,  // uninitialized            => 已经创建,但是尚未完成初始化(设置栈、文件表、pid、页表、name...等)
+    PROC_SLEEPING,    // sleeping                 => 阻塞(或者说是等待),ucore没有区分二者,不过java区分阻塞和等待
+    PROC_RUNNABLE,    // runnable(maybe running)  => 可运行(在就绪队列中,或者正在执行)
+    PROC_ZOMBIE,      // almost dead, and wait parent proc to reclaim his resource => 已经结束,但是尚未回收
 };
 
 // Saved registers for kernel context switches.
@@ -36,37 +36,46 @@ struct context {
 
 #define PROC_NAME_LEN               50
 #define MAX_PROCESS                 4096
-#define MAX_PID                     (MAX_PROCESS * 2)
+// 8192
+#define MAX_PID                     (MAX_PROCESS * 2)           
 
 extern list_entry_t proc_list;
 
 struct inode;
 
+/**
+ *              进程控制块(线程控制块)
+ * 1.在ucore中,以线程为调度单位,PCB实质上就是TCB => 故一个proc_struct描述的就是一个线程
+ * 2.mm_struct、files_struct进程内多个线程共享;
+ *   run_queue是所有线程(不管是否属于一个进程)共享,整个os只有一个run_queue;
+ *   除此之外的所有字段都是线程私有的!
+ * */
 struct proc_struct {
-    enum proc_state state;                      // Process state
-    int pid;                                    // Process ID
-    int runs;                                   // the running times of Proces
-    uintptr_t kstack;                           // Process kernel stack
-    volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
-    struct proc_struct *parent;                 // the parent process
-    struct mm_struct *mm;                       // Process's memory management field
-    struct context context;                     // Switch here to run process
-    struct trapframe *tf;                       // Trap frame for current interrupt
-    uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
+    enum proc_state state;                      // 线程状态:PROC_UNINIT、PROC_SLEEPING、PROC_RUNNABLE、PROC_ZOMBIE
+    int pid;                                    // 线程ID
+    int runs;                                   // 线程已经被执行了的次数
+    uintptr_t kstack;                           // 内核栈的虚拟地址(位于内核物理/虚拟地址空间,内核栈是线程私有的!)
+    volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU? => 若当前线程正在执行,则此值应该为1; 否则为0
+    struct proc_struct *parent;                 // 父线程/进程的结构体;(除idle外,其他都有父进程/线程)
+    struct mm_struct *mm;                       // 虚拟地址管理结构 => 这个是进程内多个线程共享!
+    struct context context;                     // 线程上下文
+    struct trapframe *tf;                       // 中断上下文?
+    uintptr_t cr3;                              // 页目录表的物理地址(cr3寄存器内容) => 进程内多个线程共享
     uint32_t flags;                             // Process flag
-    char name[PROC_NAME_LEN + 1];               // Process name
+    char name[PROC_NAME_LEN + 1];               // 线程名
     list_entry_t list_link;                     // Process link list
     list_entry_t hash_link;                     // Process hash list
     int exit_code;                              // exit code (be sent to parent proc)
     uint32_t wait_state;                        // waiting state
     struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-    struct run_queue *rq;                       // running queue contains Process
-    list_entry_t run_link;                      // the entry linked in run queue
-    int time_slice;                             // time slice for occupying the CPU
-    skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-    uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-    uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-    struct files_struct *filesp;                // the file related info(pwd, files_count, files_array, fs_semaphore) of process
+    struct run_queue *rq;                       // 就绪队列的指针(整个os只有一个就绪队列,因此这个指针应该是所有线程共享的)
+    list_entry_t run_link;                      // 通过这个字段链接进就绪队列(Round Robin)
+    int time_slice;                             // 剩余时间片大小=> 对于正在执行的线程,每隔一个节拍会减1
+    skew_heap_entry_t lab6_run_pool;            // 类似于run_list,只是这里就绪队列被组织成优先队列,供stride算法使用!
+    uint32_t lab6_stride;                       // stride值,供stride算法使用 => 每次调度时选取stride值最小的线程执行
+                                                //
+    uint32_t lab6_priority;                     // 线程优先级,供stride算法使用
+    struct files_struct *filesp;                // 文件相关的信息(进程内的所有线程共享) => 进程的工作目录、打开文件表、共享文件的线程数...
 };
 
 #define PF_EXITING                  0x00000001      // getting shutdown

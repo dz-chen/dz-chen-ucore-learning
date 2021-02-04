@@ -204,7 +204,8 @@ struct Page *alloc_pages(size_t n) {
          
          extern struct mm_struct *check_mm_struct;
          //cprintf("page %x, call swap_out in alloc_pages %d\n",page, n);
-         swap_out(check_mm_struct, n, 0);
+         swap_out(check_mm_struct, n, 0);      // 为什么?
+         cprintf("------ alloc_pages failed!!! swap_out check_mm_struct... ");  // by cdz
     }
     //cprintf("n %d,get page %x, No %d in alloc_pages\n",n,page,(page-pages));
     return page;
@@ -378,7 +379,8 @@ void pmm_init(void) {
     // map all physical memory to linear memory with base linear addr KERNBASE
     // linear_addr KERNBASE ~ KERNBASE + KMEMSIZE = phy_addr 0 ~ KMEMSIZE
     // 根据传入的参数,意思是:将物理地址0~KMEMSIZE 映射到 虚拟地址KERNBASE~KERNBASE + KMEMSIZE
-    //                     => 这里的目的是将内核虚拟地址映射到固定的物理内存区域
+    // 从而将内核虚拟地址映射到固定的物理内存区域
+    // => 这一步就是给内核代码空间(虚拟空间)分配物理内存!
     // 为什么这里只映射KMEMSIZE大小,这样不是就没有映射0xFAC00000(va)处4MB的页表了吗??
     boot_map_segment(boot_pgdir, KERNBASE, KMEMSIZE, 0, PTE_W);
 
@@ -450,7 +452,7 @@ pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create) {
             if(page==NULL) return NULL;
             set_page_ref(page,1);               // (4) 设置对页表的引用(页目录项中会引用它)  
             uintptr_t la=KADDR(page2pa(page));  // (5) 获取新分配页的线性地址(va/la)   
-            memset((void*)la,0,PGSIZE);         // (6) 清空新分配的页中的内容
+            memset((void*)la,0,PGSIZE);         // (6) 清空新分配的页表中的内容 => 所有二级页表项置0
             *pdep=page2pa(page)|PTE_W|PTE_P|PTE_U; //(7)设置页目录表权限
         }
         else return NULL;
@@ -623,23 +625,23 @@ void page_remove(pde_t *pgdir, uintptr_t la) {
 //  perm:  the permission of this Page which is setted in related pte
 // return value: always 0
 //note: PT is changed, so the TLB need to be invalidate 
-int
-page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
-    pte_t *ptep = get_pte(pgdir, la, 1);
+// 完成page指针对应的物理页与la对应的虚拟页的映射 => 需要修改二级页表
+int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
+    pte_t *ptep = get_pte(pgdir, la, 1);        // 返回la对应的二级页表项
     if (ptep == NULL) {
         return -E_NO_MEM;
     }
     page_ref_inc(page);
-    if (*ptep & PTE_P) {
+    if (*ptep & PTE_P) {                       // 如果la对应的物理页存在
         struct Page *p = pte2page(*ptep);
-        if (p == page) {
+        if (p == page) {          // 1.la与page原本就存在映射关系 => 不需要增加引用次数
             page_ref_dec(page);
-        }
-        else {
-            page_remove_pte(pgdir, la, ptep);
+        }   
+        else {                    // 2.la与page原来不存在映射关系,删除(la,ptep)对应的地址映射,在下面重新设置地址映射
+            page_remove_pte(pgdir, la, ptep);  
         }
     }
-    *ptep = page2pa(page) | PTE_P | perm;
+    *ptep = page2pa(page) | PTE_P | perm;       // 修改二级页表项
     tlb_invalidate(pgdir, la);
     return 0;
 }
@@ -654,12 +656,15 @@ void tlb_invalidate(pde_t *pgdir, uintptr_t la) {
     }
 }
 
-// pgdir_alloc_page - call alloc_page & page_insert functions to 
-//                  - allocate a page size memory & setup an addr map
-//                  - pa<->la with linear address la and the PDT pgdir
-struct Page *
-pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
-    struct Page *page = alloc_page();
+/**
+ * pgdir_alloc_page 
+ * - call alloc_page & page_insert functions to allocate a page size memory 
+ * - & setup an addr map pa<->la with linear address la and the PDT pgdir
+ * 1.给虚拟地址la分配对应的物理页面
+ * 2.完成la与物理页面的映射(通过page_insert)
+ * */
+struct Page *pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
+    struct Page *page = alloc_page();           // 分配物理页
     if (page != NULL) {
         if (page_insert(pgdir, page, la, perm) != 0) {
             free_page(page);

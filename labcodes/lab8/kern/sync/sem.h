@@ -6,8 +6,8 @@
 #include <wait.h>
 
 typedef struct {
-    int value;
-    wait_queue_t wait_queue;
+    int value;                  // 信号量的当前值:可用资源数
+    wait_queue_t wait_queue;    // 该信号量对应的等待队列
 } semaphore_t;
 
 void sem_init(semaphore_t *sem, int value);

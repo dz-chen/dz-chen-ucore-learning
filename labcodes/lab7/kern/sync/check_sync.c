@@ -86,9 +86,6 @@ void drop_chopsticks(int i)
 
 
 
-
-
-
 //---------- philosophers problem using semaphore ----------------------
 int state_sema[N]; /* 记录每个人状态的数组,共5人 */
 /* 信号量是一个特殊的整型变量 */

@@ -36,7 +36,7 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE:4096*1024,页表
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE:4096*1024,内核页表
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
@@ -108,6 +108,8 @@
 
 typedef uintptr_t pte_t;
 typedef uintptr_t pde_t;
+
+// | 24 | 7 | 1| => 高24bit是磁盘扇区号,中间7位暂时保留,最低1bit是PTE_P
 typedef pte_t swap_entry_t; //the pte can also be a swap entry
 
 // some constants for bios interrupt 15h AX = 0xE820
@@ -163,8 +165,8 @@ struct Page {
     list_entry_t page_link;         // free list link
     // 双向链表page_link,连接连续的物理内存空闲块,空闲块的第一个page才会使用这个字段!! 连接的是空闲块而不是页帧!
 
-    list_entry_t pra_page_link;     // used for pra (page replace algorithm)
-    uintptr_t pra_vaddr;            // used for pra (page replace algorithm)
+    list_entry_t pra_page_link;     // used for pra (page replace algorithm) => 链接同属某个进程的在物理内存中的页面,见swap_fifo.c
+    uintptr_t pra_vaddr;            // used for pra (page replace algorithm) => 此物理页对应的虚拟内存地址(仅用户线程在换出页面时使用)
 };
 
 /* Flags describing the status of a page frame */

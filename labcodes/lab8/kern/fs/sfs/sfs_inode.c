@@ -16,7 +16,7 @@
 /*********************************************************************************************
  *                对SFS层的一些操作,包括:sfs_inode的操作、文件操作、目录操作
  * 
- * 1.重点关注(后缀为nolck的函数,仅在获得对应inode的信号量后才能调用):
+ * 1.重点关注(后缀为nolock的函数,仅在获得对应inode的信号量后才能调用):
  *     1.1 sfs_bmap_load_nolock     => 获取inode第index个数据块的磁盘块号
  *     1.2 sfs_bmap_truncate_nolock => 释放sfs_inode的最后一个有效数据块
  *     1.3 sfs_dirent_read_nolock   => 将目录的第slot个entry读取到指定的内存空间
@@ -370,15 +370,15 @@ sfs_bmap_free_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index) 
 /*
  * sfs_bmap_load_nolock - according to the DIR's inode and the logical index of block in inode, 
  * find the NO. of disk block.
- * 将sfs_inode对应的文件数据的 第index个块(index<12+1024) 的磁盘块号放到ino_store
- * 如果index==文件的实际块数,则先创建一个块,再....
+ * => 即:将数据block在文件内的索引号index ---> 转换为该数据块在整个磁盘的索引号ino_store
+ * 1.将sfs_inode对应的文件数据的 第index个块(index<12+1024) 的磁盘块号放到ino_store
+ * 2.如果index==文件的实际块数,则先创建一个块,再....
  * sfs:      sfs file system                           => SFS
  * sin:      sfs inode in memory                       => sfs_inode
  * index:    the logical index of disk block in inode  => sfs_inode对应文件数据部分的逻辑块号(小于数据块个数)
  * ino_store:the NO. of disk block  
  */
-static int
-sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, uint32_t *ino_store) {
+static int sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, uint32_t *ino_store) {
     struct sfs_disk_inode *din = sin->din;
     assert(index <= din->blocks);               // index必须小于inode对应文件的数据块的个数=>index是文件数据块的逻辑块号,而不是磁盘块号
     int ret;
@@ -401,8 +401,7 @@ sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, 
  * sfs_bmap_truncate_nolock - free the disk block at the end of file
  * 释放sfs_inode的最后一个有效数据块
  */
-static int
-sfs_bmap_truncate_nolock(struct sfs_fs *sfs, struct sfs_inode *sin) {
+static int sfs_bmap_truncate_nolock(struct sfs_fs *sfs, struct sfs_inode *sin) {
     struct sfs_disk_inode *din = sin->din;
     assert(din->blocks != 0);
     int ret;
@@ -473,8 +472,7 @@ sfs_dirent_read_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, int slot, stru
  * slot:       logical index of file entry (NOTICE: each file entry ocupied one  disk block)
  * empty_slot: the empty logical index of file entry.
  */
-static int
-sfs_dirent_search_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, const char *name, uint32_t *ino_store, int *slot, int *empty_slot) {
+static int sfs_dirent_search_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, const char *name, uint32_t *ino_store, int *slot, int *empty_slot) {
     assert(strlen(name) <= SFS_MAX_FNAME_LEN);
     struct sfs_disk_entry *entry;
     if ((entry = kmalloc(sizeof(struct sfs_disk_entry))) == NULL) {     //给entry分配空间
@@ -508,7 +506,6 @@ out:
 /*
  * sfs_dirent_findino_nolock - read all file entries in DIR's inode and find a entry->ino == ino
  */
-
 static int
 sfs_dirent_findino_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t ino, struct sfs_disk_entry *entry) {
     int ret, i, nslots = sin->din->blocks;
@@ -576,20 +573,21 @@ static int sfs_close(struct inode *node) {
     return vop_fsync(node);
 }
 
-/*  
- * sfs_io_nolock - Rd/Wr a file contentfrom offset position to offset+ length  disk blocks<-->buffer (in memroy)
- * @sfs:      sfs file system
- * @sin:      sfs inode in memory
- * @buf:      the buffer Rd/Wr
- * @offset:   the offset of file
- * @alenp:    the length need to read (is a pointer). and will RETURN the really Rd/Wr lenght
- * @write:    BOOL, 0 read, 1 write
+/**
+ * sfs_io_nolock - Rd/Wr a file content from offset position to offset+ length
+ * 完成内存缓冲区(buf) 与 磁盘文件(sin) 之间的IO => 读或者写
+ * 读/写从文件offset开始的alenp长度的数据
+ * -sfs:      sfs file system
+ * -sin:      sfs inode in memory
+ * -buf:      the buffer Rd/Wr
+ * -offset:   the offset of file
+ * -alenp:    the length need to read (is a pointer). and will RETURN the really Rd/Wr lenght
+ * -write:    BOOL, 0 read, 1 write
  */
-static int
-sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset, size_t *alenp, bool write) {
-    struct sfs_disk_inode *din = sin->din;
+static int sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset, size_t *alenp, bool write) {
+    struct sfs_disk_inode *din = sin->din;              // 对应磁盘inode
     assert(din->type != SFS_TYPE_DIR);
-    off_t endpos = offset + *alenp, blkoff;
+    off_t endpos = offset + *alenp, blkoff;             // 读取数据结束位置(相对于文件头)
     *alenp = 0;
 	// calculate the Rd/Wr end position
     if (offset < 0 || offset >= SFS_MAX_FILE_SIZE || offset > endpos) {
@@ -601,8 +599,10 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     if (endpos > SFS_MAX_FILE_SIZE) {
         endpos = SFS_MAX_FILE_SIZE;
     }
+
+    // 如果是读数据
     if (!write) {
-        if (offset >= din->size) {
+        if (offset >= din->size) {          // offset不能超过文件大小
             return 0;
         }
         if (endpos > din->size) {
@@ -610,11 +610,15 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
         }
     }
 
+    // 函数指针,指向相关的操作函数
     int (*sfs_buf_op)(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset);
     int (*sfs_block_op)(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks);
+    
+    // 1.如果是向磁盘写数据
     if (write) {
         sfs_buf_op = sfs_wbuf, sfs_block_op = sfs_wblock;
     }
+    // 2.否则,是从磁盘读数据
     else {
         sfs_buf_op = sfs_rbuf, sfs_block_op = sfs_rblock;
     }
@@ -635,9 +639,52 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
      * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
 	*/
+    // (1).如果offset没有对齐要R/W的第一个block,需要先将这个block填充满(无论R/W)
+    blkoff=offset % SFS_BLKSIZE;      // offset对应最后一个块的块内偏移
+    if(blkoff!=0){              
+        size= nblks==0 ?(endpos-offset) : SFS_BLKSIZE;       // 读/写第一个block需要填充的字节数
+        ret=sfs_bmap_load_nolock(sfs,sin,blkno,&ino);  // 获取文件内索引blkno的磁盘块号ino(在整个文件系统中的编号)
+        if(ret!=0) goto out;
+
+        ret=sfs_buf_op(sfs,buf,size,ino,blkoff);
+        if(ret!=0) goto out;
+
+        alen+=size;                 // 实际R/W的字节数增加
+        if(nblks==0) goto out;      // nblks=0,只需要完成没有对齐的那个部分即可
+        buf+=size;
+        blkno++;
+        nblks--;                    // 剩余要R/W的block数
+    }
+
+    // (2).完成后面连续的完整block的R/W
+    size=SFS_BLKSIZE;
+    while(nblks>0){
+        ret=sfs_bmap_load_nolock(sfs,sin,blkno,&ino);
+        if(ret!=0) goto out;
+
+        ret=sfs_block_op(sfs,buf,ino,1);
+        if(ret!=0) goto out;
+
+        alen+=size;                 // 实际R/W的字节数增加
+        buf+=size;
+        blkno++;
+        nblks--;                    // 剩余要R/W的block数
+    }
+
+    // (3).如果endpos没有对齐要R/W的最后一个block,需要补足这个block的最前面部分(无论R/W)
+    size=endpos % SFS_BLKSIZE;
+    if(size!=0){
+        ret=sfs_bmap_load_nolock(sfs,sin,blkno,&ino);
+        if(ret!=0) goto out;
+
+        ret=sfs_buf_op(sfs,buf,size,ino,0);
+        if(ret!=0) goto out;
+        alen+=size;                 // 实际R/W的字节数增加
+    }
+
 out:
-    *alenp = alen;
-    if (offset + alen > sin->din->size) {
+    *alenp = alen;        // 返回实际的读/写字节数
+    if (offset + alen > sin->din->size) {    // 文件变长了(向文件写了数据)
         sin->din->size = offset + alen;
         sin->dirty = 1;
     }
@@ -648,8 +695,7 @@ out:
  * sfs_io - Rd/Wr file. the wrapper of sfs_io_nolock
             with lock protect
  */
-static inline int
-sfs_io(struct inode *node, struct iobuf *iob, bool write) {
+static inline int sfs_io(struct inode *node, struct iobuf *iob, bool write) {
     struct sfs_fs *sfs = fsop_info(vop_fs(node), sfs);
     struct sfs_inode *sin = vop_info(node, sfs_inode);
     int ret;
@@ -669,8 +715,7 @@ sfs_io(struct inode *node, struct iobuf *iob, bool write) {
  * sfs_read - read file
  * 读文件,调用sfs_io,sfs_io最终通过访问硬盘驱动完成写文件
  *  */
-static int
-sfs_read(struct inode *node, struct iobuf *iob) {
+static int sfs_read(struct inode *node, struct iobuf *iob) {
     return sfs_io(node, iob, 0);
 }
 

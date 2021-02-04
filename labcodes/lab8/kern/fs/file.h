@@ -11,6 +11,8 @@ struct inode;
 struct stat;
 struct dirent;
 
+// 文件的结构体
+// 包括文件状态、是否可读/写、fd、当前指针、inode指针(关键)、被打开次数
 struct file {
     enum {
         FD_NONE, FD_INIT, FD_OPENED, FD_CLOSED,
@@ -19,7 +21,7 @@ struct file {
     bool writable;              // 文件是否可写
     int fd;                     // 文件在filemap中的索引值
     off_t pos;                  // 访问当前文件的位置
-    struct inode *node;         // 该文件对应的inode指针
+    struct inode *node;         // 该文件对应的inode指针 => inode是对磁盘文件的抽象
     int open_count;             // 文件被打开次数
 };
 

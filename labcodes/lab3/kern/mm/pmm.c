@@ -667,8 +667,10 @@ print_pgdir(void) {
     cprintf("--------------------- END ---------------------\n");
 }
 
-void *
-kmalloc(size_t n) {
+
+// 这里的kmalloc、kfree只是临时性的,暂时对于n的字节的分配请求,只能实现整数page分配
+// lab4中有改进
+void *kmalloc(size_t n) {
     void * ptr=NULL;
     struct Page *base=NULL;
     assert(n > 0 && n < 1024*0124);

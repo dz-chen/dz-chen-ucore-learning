@@ -12,7 +12,7 @@
  * 1.Simple FS (SFS) definitions visible to ucore. This covers the on-disk format and is used by
  * tools that work on SFS volumes, such as mksfs.
  * 2.为了简单,ucore中SFS的一个block对应一个page(4k=8个扇区)
- * 3.SFS文件系统布局 => |super block| root-dir inode| freemap | inode/file data/dir data blocks|
+ * 3.SFS文件系统(位于disk0)布局 => |super block| root-dir inode| freemap | (inode)/(file data)/(dir data) blocks|
  *     3.1 超块用于记录文件系统信息
  *     3.2 超块之后紧接着的一个block是root-dir inode,用于记录根目录相关信息
  *     3.3 freemap是所有block的位图,相关操作见bitmap.[ch]
@@ -49,10 +49,10 @@
  * On-disk superblock, 超块(文件系统的第一个block),包含文件系统的基本信息
  **/
 struct sfs_super {
-    uint32_t magic;                                 /* magic number, should be SFS_MAGIC */
-    uint32_t blocks;                                /* # of blocks in fs */
-    uint32_t unused_blocks;                         /* # of unused blocks in fs */
-    char info[SFS_MAX_INFO_LEN + 1];                /* infomation for sfs  */
+    uint32_t magic;                           /* magic number, should be SFS_MAGIC */
+    uint32_t blocks;                          /* # of blocks in fs */
+    uint32_t unused_blocks;                   /* # of unused blocks in fs */
+    char info[SFS_MAX_INFO_LEN + 1];          /* infomation for sfs  */
 };
 
 /**
@@ -87,12 +87,12 @@ struct sfs_disk_entry {
 };
 
 /**
- * inode for sfs  => 内存中的索引节点
+ * inode for sfs =>对硬盘上的inode的包装,故sfs_inode可被看做vnode
  * 内存sfs_inode是在打开文件后才创建的,磁盘上并没有这部分信息!!!
  * 内存sfs_inode包含sfs_disk_inode的指针,在此基础上增加了一些其他有用信息
  **/
 struct sfs_inode {
-    struct sfs_disk_inode *din;      // sfs_disk_inode的指针
+    struct sfs_disk_inode *din;      // sfs_disk_inode的指针(关键)
     uint32_t ino;                    // 此inode的编号 => ucore直接使用磁盘块号
     bool dirty;                      // 这个inode是否被修改
     int reclaim_count;               // 对应文件的引用计数; 为0后则会删除这个内存inode 

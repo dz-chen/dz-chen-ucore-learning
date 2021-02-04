@@ -3,17 +3,21 @@
 
 #include <list.h>
 
+
+// 等待(阻塞)队列的定义
 typedef struct {
-    list_entry_t wait_head;
+    list_entry_t wait_head;       // 队头元素
 } wait_queue_t;
 
 struct proc_struct;
 
+// 等待队列上的一个节点(通过wait_link与队列联系)
+// 可见,ucore实现中不止一个等待/阻塞队列; 而就绪队列只有一个!
 typedef struct {
-    struct proc_struct *proc;
-    uint32_t wakeup_flags;
-    wait_queue_t *wait_queue;
-    list_entry_t wait_link;
+    struct proc_struct *proc;       // 被阻塞的线程
+    uint32_t wakeup_flags;          // 线程被放入等待队列的原因
+    wait_queue_t *wait_queue;       // 属于哪一个等待队列
+    list_entry_t wait_link;         // 通过这个成员链接到对应的等待队列wait_queue
 } wait_t;
 
 #define le2wait(le, member)         \

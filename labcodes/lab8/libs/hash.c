@@ -9,9 +9,10 @@
  * @bits:   the number of bits in a return value
  *
  * High bits are more random, so we use them.
+ * 将val映射到[0,2^bits-1]中的某个数
+ * 
  * */
-uint32_t
-hash32(uint32_t val, unsigned int bits) {
+uint32_t hash32(uint32_t val, unsigned int bits) {
     uint32_t hash = val * GOLDEN_RATIO_PRIME_32;
     return (hash >> (32 - bits));
 }

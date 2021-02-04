@@ -63,31 +63,43 @@ SYS_getpid      : get the process's pid
 */
 
 // the process set's list
+// 所有进程控制块的双向链表,proc_struct中的成员变量list_link将链接入这个链表中
 list_entry_t proc_list;
 
 #define HASH_SHIFT          10
-#define HASH_LIST_SIZE      (1 << HASH_SHIFT)
-#define pid_hashfn(x)       (hash32(x, HASH_SHIFT))
+#define HASH_LIST_SIZE      (1 << HASH_SHIFT)               // 1024
+#define pid_hashfn(x)       (hash32(x, HASH_SHIFT))         // hash32 来自libs/hash.c
 
-// has list for process set based on pid
+/**
+ * has list for process set based on pid
+ * 所有进程控制块的哈希表,proc_struct中的成员变量hash_link将基于pid链接入这个哈希表中
+ * 通过它可以O(1)快速查找任意一个进程对应的PCB,而不用遍历整个PCB组成的双向链表
+ * 注:hash_list是一个数组,每个数组元素对应一个双向链表,称为bucket
+ * 线程加入hash_list是根据pid决定应该插入哪个bucket
+ * */
 static list_entry_t hash_list[HASH_LIST_SIZE];
 
 // idle proc
 struct proc_struct *idleproc = NULL;
 // init proc
 struct proc_struct *initproc = NULL;
-// current proc
+
+// current proc => 当前正在执行的线程的PCB(TCB)
 struct proc_struct *current = NULL;
 
 static int nr_process = 0;
 
-void kernel_thread_entry(void);
+// 定义见process/entry.S
+void kernel_thread_entry(void);         
 void forkrets(struct trapframe *tf);
 void switch_to(struct context *from, struct context *to);
 
-// alloc_proc - alloc a proc_struct and init all fields of proc_struct
-static struct proc_struct *
-alloc_proc(void) {
+/**
+ * alloc_proc - alloc a proc_struct and init all fields of proc_struct
+ * 动态分配一个PCB
+ * 并完成基本的初始化(各成员变量清0)
+ **/
+static struct proc_struct *alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
     //LAB4:EXERCISE1 YOUR CODE
@@ -106,6 +118,20 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+    // 只是统一的简单初始化,很多字段之后还会根据具体线程修改
+    proc->state=PROC_UNINIT;
+    proc->pid=-1;                       
+    proc->runs=0;
+    proc->kstack=0;
+    proc->need_resched=0;
+    proc->parent=NULL;
+    proc->mm=NULL;
+    memset(&(proc->context),0,sizeof(struct context));
+    proc->tf=NULL;
+    proc->cr3=boot_cr3;                                 // PDT的物理地址(内核的)
+    proc->flags=0;
+    memset(&(proc->name),0,PROC_NAME_LEN);
+    
      //LAB5 YOUR CODE : (update LAB4 steps)
     /*
      * below fields(add in LAB5) in proc_struct need to be initialized	
@@ -127,9 +153,11 @@ alloc_proc(void) {
     return proc;
 }
 
-// set_proc_name - set the name of proc
-char *
-set_proc_name(struct proc_struct *proc, const char *name) {
+/**
+ * set_proc_name - set the name of proc
+ * 设置proc的名字
+ * */
+char *set_proc_name(struct proc_struct *proc, const char *name) {
     memset(proc->name, 0, sizeof(proc->name));
     return memcpy(proc->name, name, PROC_NAME_LEN);
 }
@@ -170,9 +198,12 @@ remove_links(struct proc_struct *proc) {
     nr_process --;
 }
 
-// get_pid - alloc a unique pid for process
-static int
-get_pid(void) {
+/**
+ * get_pid - alloc a unique pid for process
+ * 分配一个空闲的pid
+ * 如何理解其中的代码逻辑?
+ * */
+static int get_pid(void) {
     static_assert(MAX_PID > MAX_PROCESS);
     struct proc_struct *proc;
     list_entry_t *list = &proc_list, *le;
@@ -186,6 +217,7 @@ get_pid(void) {
         next_safe = MAX_PID;
     repeat:
         le = list;
+        // 遍历所有线程的链表,找到一个合适的pid
         while ((le = list_next(le)) != list) {
             proc = le2proc(le, list_link);
             if (proc->pid == last_pid) {
@@ -207,8 +239,7 @@ get_pid(void) {
 
 // proc_run - make process "proc" running on cpu
 // NOTE: before call switch_to, should load  base addr of "proc"'s new PDT
-void
-proc_run(struct proc_struct *proc) {
+void proc_run(struct proc_struct *proc) {
     if (proc != current) {
         bool intr_flag;
         struct proc_struct *prev = current, *next = proc;
@@ -223,17 +254,22 @@ proc_run(struct proc_struct *proc) {
     }
 }
 
-// forkret -- the first kernel entry point of a new thread/process
-// NOTE: the addr of forkret is setted in copy_thread function
-//       after switch_to, the current proc will execute here.
-static void
-forkret(void) {
+/**
+ * forkret -- the first kernel entry point of a new thread/process
+ * NOTE: the addr of forkret is setted in copy_thread function
+ *      after switch_to, the current proc will execute here.
+ * ??
+ * */
+static void forkret(void) {
     forkrets(current->tf);
 }
 
-// hash_proc - add proc into proc hash_list
-static void
-hash_proc(struct proc_struct *proc) {
+/**
+ * hash_proc - add proc into proc hash_list
+ * 将线程proc加入hash_list
+ * (根据proc->pid决定加入那个bucket)
+ * */
+static void hash_proc(struct proc_struct *proc) {
     list_add(hash_list + pid_hashfn(proc->pid), &(proc->hash_link));
 }
 
@@ -243,11 +279,13 @@ unhash_proc(struct proc_struct *proc) {
     list_del(&(proc->hash_link));
 }
 
-// find_proc - find proc frome proc hash_list according to pid
-struct proc_struct *
-find_proc(int pid) {
+/**
+ * find_proc - find proc frome proc hash_list according to pid
+ * 输入pid => 查找hash_list => 返回线程的proc_struct
+ * */
+struct proc_struct *find_proc(int pid) {
     if (0 < pid && pid < MAX_PID) {
-        list_entry_t *list = hash_list + pid_hashfn(pid), *le = list;
+        list_entry_t *list = hash_list + pid_hashfn(pid), *le = list;  // list是pid对应线程的bucket
         while ((le = list_next(le)) != list) {
             struct proc_struct *proc = le2proc(le, hash_link);
             if (proc->pid == pid) {
@@ -258,27 +296,39 @@ find_proc(int pid) {
     return NULL;
 }
 
-// kernel_thread - create a kernel thread using "fn" function
-// NOTE: the contents of temp trapframe tf will be copied to 
-//       proc->tf in do_fork-->copy_thread function
-int
-kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
-    struct trapframe tf;
+/**
+ * kernel_thread - create a kernel thread using "fn" function
+ * NOTE: the contents of temp trapframe tf will be copied to 
+ *       proc->tf in do_fork-->copy_thread function
+ * 用输入的函数fn,来创建一个内核线程
+ * - fn:新线程将要执行的函数
+ * - arg:fn函数的参数
+ * - clone_flags:调用do_fork时的参数,它指明了新建线程与当前线程是否共享mm_struct(不共享则属于不同进程!)
+ * */
+int kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
+    struct trapframe tf;                            // 这个tf在栈上,只是临时性的
     memset(&tf, 0, sizeof(struct trapframe));
-    tf.tf_cs = KERNEL_CS;
+    tf.tf_cs = KERNEL_CS;                           // 设置为内核的cs段选择子
     tf.tf_ds = tf.tf_es = tf.tf_ss = KERNEL_DS;
-    tf.tf_regs.reg_ebx = (uint32_t)fn;
-    tf.tf_regs.reg_edx = (uint32_t)arg;
-    tf.tf_eip = (uint32_t)kernel_thread_entry;
-    return do_fork(clone_flags | CLONE_VM, 0, &tf);
+    tf.tf_regs.reg_ebx = (uint32_t)fn;              // 要调用的函数的地址
+    tf.tf_regs.reg_edx = (uint32_t)arg;             // 函数参数的位置
+    tf.tf_eip = (uint32_t)kernel_thread_entry;      // 函数定义在process/entry.S 
+                                // eip本来是存储段内偏移,但是ucore已将所以段基址设置为0(见pmm.c, gdt[])
+    return do_fork(clone_flags | CLONE_VM, 0, &tf);  // CLONE_VM表示与新建的线程共享虚拟内存
+                                                    // stack参数为0,表示创建内核线程
 }
 
-// setup_kstack - alloc pages with size KSTACKPAGE as process kernel stack
-static int
-setup_kstack(struct proc_struct *proc) {
+
+
+/**
+ * setup_kstack - alloc pages with size KSTACKPAGE as process kernel stack
+ * 给线程proc动态分配一个内核栈
+ * 注意内核栈始终位于内核的地址空间(虚拟以及物理)
+ **/
+static int setup_kstack(struct proc_struct *proc) {
     struct Page *page = alloc_pages(KSTACKPAGE);
     if (page != NULL) {
-        proc->kstack = (uintptr_t)page2kva(page);
+        proc->kstack = (uintptr_t)page2kva(page);   
         return 0;
     }
     return -E_NO_MEM;
@@ -290,16 +340,19 @@ put_kstack(struct proc_struct *proc) {
     free_pages(kva2page((void *)(proc->kstack)), KSTACKPAGE);
 }
 
-// setup_pgdir - alloc one page as PDT
-static int
-setup_pgdir(struct mm_struct *mm) {
+/**
+ * setup_pgdir - alloc one page as PDT
+ * 在内核空间分配一个page,作为mm_struct的pgdir
+ * 会复制boot_pgdir
+ * */
+static int setup_pgdir(struct mm_struct *mm) {
     struct Page *page;
     if ((page = alloc_page()) == NULL) {
         return -E_NO_MEM;
     }
     pde_t *pgdir = page2kva(page);
     memcpy(pgdir, boot_pgdir, PGSIZE);
-    pgdir[PDX(VPT)] = PADDR(pgdir) | PTE_P | PTE_W;
+    pgdir[PDX(VPT)] = PADDR(pgdir) | PTE_P | PTE_W;         // ?
     mm->pgdir = pgdir;
     return 0;
 }
@@ -310,17 +363,20 @@ put_pgdir(struct mm_struct *mm) {
     free_page(kva2page(mm->pgdir));
 }
 
-// copy_mm - process "proc" duplicate OR share process "current"'s mm according clone_flags
-//         - if clone_flags & CLONE_VM, then "share" ; else "duplicate"
-static int
-copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
+/**
+ * copy_mm - process "proc" duplicate OR share process "current"'s mm according clone_flags
+ *         - if clone_flags & CLONE_VM, then "share" ; else "duplicate"
+ * 复制或者共享当前线程的mm_struct 给新建的线程proc
+ * - clone_flags:CLONE_VM则共享,否则复制
+ * */
+static int copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
     struct mm_struct *mm, *oldmm = current->mm;
 
     /* current is a kernel thread */
-    if (oldmm == NULL) {
+    if (oldmm == NULL) {                    // 1.内核线程都不需要mm_struct
         return 0;
     }
-    if (clone_flags & CLONE_VM) {
+    if (clone_flags & CLONE_VM) {           // 2.proc与当前线程共享mm_struct => current、proc线程属于同一进程
         mm = oldmm;
         goto good_mm;
     }
@@ -333,9 +389,10 @@ copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
         goto bad_pgdir_cleanup_mm;
     }
 
+    // 为何要lock ?
     lock_mm(oldmm);
     {
-        ret = dup_mmap(mm, oldmm);
+        ret = dup_mmap(mm, oldmm);       // 3.proc复制当前线程的mm_struct => 二者属于不同的进程
     }
     unlock_mm(oldmm);
 
@@ -357,16 +414,19 @@ bad_mm:
     return ret;
 }
 
-// copy_thread - setup the trapframe on the  process's kernel stack top and
-//             - setup the kernel entry point and stack of process
-static void
-copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf) {
+/* copy_thread - setup the trapframe on the  process's kernel stack top and
+ *             - setup the kernel entry point and stack of process
+ *  ???
+ * */
+static void copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf) {
+    // 设置proc的trapframe(就在proc->kstack的栈顶)
     proc->tf = (struct trapframe *)(proc->kstack + KSTACKSIZE) - 1;
-    *(proc->tf) = *tf;
+    *(proc->tf) = *tf;                                  // 怎么理解 ?
     proc->tf->tf_regs.reg_eax = 0;
-    proc->tf->tf_esp = esp;
-    proc->tf->tf_eflags |= FL_IF;
+    proc->tf->tf_esp = esp;                                 
+    proc->tf->tf_eflags |= FL_IF;                       // 设置中断标志位
 
+    // 设置proc的起始点以及栈顶指针
     proc->context.eip = (uintptr_t)forkret;
     proc->context.esp = (uintptr_t)(proc->tf);
 }
@@ -414,13 +474,14 @@ put_files(struct proc_struct *proc) {
     }
 }
 
-/* do_fork -     parent process for a new child process
- * @clone_flags: used to guide how to clone the child process
- * @stack:       the parent's user stack pointer. if stack==0, It means to fork a kernel thread.
- * @tf:          the trapframe info, which will be copied to child process's proc->tf
+/* do_fork      parent process for a new child process
+ * - clone_flags: used to guide how to clone the child process
+ * - stack:       the parent's user stack pointer. if stack==0, It means to fork a kernel thread.
+ * - tf:          the trapframe info, which will be copied to child process's proc->tf
+ * 创建当前线程的一个副本,他们的执行上下文、代码、数据都一样
+ * 但是存储位置不同
  */
-int
-do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
+int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     int ret = -E_NO_FREE_PROC;
     struct proc_struct *proc;
     if (nr_process >= MAX_PROCESS) {
@@ -453,6 +514,31 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+    proc=alloc_proc();                      // 1.动态分配PCB(TCB),设置父进/线程
+    if(proc==NULL) goto fork_out;
+    proc->parent=proc;
+
+    int res_flag=0;
+    res_flag=setup_kstack(proc);            // 2.给新建的线程分配内核栈(每个线程私有)
+    if(res_flag!=0) goto bad_fork_cleanup_proc;
+
+    res_flag=copy_mm(clone_flags,proc);     // 3.复制或者共享当前线程的mm_struct给进程proc
+    if(res_flag!=0) goto bad_fork_cleanup_proc;
+
+    copy_thread(proc,stack,tf);             // 4.初始化proc的成员tf、context
+
+    bool intr_save;                         // 5.将新建的子线程加入proc_list、hash_list
+    local_intr_save(intr_save); // 关中断        
+    {
+        proc->pid=get_pid();
+        list_add(&proc_list,&(proc->list_link));
+        hash_proc(proc);
+        nr_process++;
+    }
+    local_intr_restore(intr_save);
+
+    wakeup_proc(proc);                      // 6.唤醒新建线程 => 使新建线程处于RUNNABLE状态                      
+    ret=proc->pid;                          // 7.设置返回值(返回新建线程的id)
 
 	//LAB5 YOUR CODE : (update LAB4 steps)
    /* Some Functions
@@ -528,13 +614,16 @@ do_exit(int error_code) {
     }
     local_intr_restore(intr_flag);
     
+    // 主动放弃当前线程控制权,选取一个新的线程执行
     schedule();
     panic("do_exit will not return!! %d.\n", current->pid);
 }
 
-//load_icode_read is used by load_icode in LAB8
-static int
-load_icode_read(int fd, void *buf, size_t len, off_t offset) {
+/**
+ * load_icode_read is used by load_icode in LAB8
+ * 从文件fd中偏移offset开始,读取len字节到缓冲区buf中
+ */ 
+static int load_icode_read(int fd, void *buf, size_t len, off_t offset) {
     int ret;
     if ((ret = sysfile_seek(fd, offset, LSEEK_SET)) != 0) {
         return ret;
@@ -545,10 +634,15 @@ load_icode_read(int fd, void *buf, size_t len, off_t offset) {
     return 0;
 }
 
-// load_icode -  called by sys_exec-->do_execve
-  
-static int
-load_icode(int fd, int argc, char **kargv) {
+/**
+ * load_icode -  called by sys_exec-->do_execve
+ * 从文件系统加载可执行文件 => 即执行程序
+ * (注意与之前的版本对比,加入文件系统后,load_icode有较大改变)
+ * - fd:可执行文件对应的文件描述符
+ * - argc:函数的参数个数
+ * - kargv:函数参数
+ * */
+static int load_icode(int fd, int argc, char **kargv) {
     /* LAB8:EXERCISE2 YOUR CODE  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
      * MACROs or Functions:
      *  mm_create        - create a mm
@@ -573,6 +667,179 @@ load_icode(int fd, int argc, char **kargv) {
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
      */
+    assert(argc>=0 && argc<= EXEC_MAX_ARG_NUM);
+
+    // (1) create a new mm for current process
+    if(current->mm!=NULL){
+        panic("load_icode:current->mm must be empty.\n");
+    }
+    int ret=-E_NO_MEM;
+    struct mm_struct* mm;
+    if((mm=mm_create())==NULL){
+        goto bad_mm;
+    }
+
+    // (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT(这里说法不对,是复制了boot_pgdir,而不是直接等于)
+    if(setup_pgdir(mm)!=0){         
+        goto bad_pgdir_cleanup_mm;
+    }
+
+    // (3) copy TEXT/DATA/BSS parts in binary to memory space of process
+    //     => 这一部分可以与前几个lab对比,区别在于这里是从文件系统读取,而之前是直接读取内存中的数据!
+    // (3.1) read raw data content in file and resolve elfhdr
+    struct Page* page;
+    struct elfhdr __elf,*elf=&__elf;
+    if(ret=load_icode_read(fd,elf,sizeof(struct elfhdr),0)!=0){
+        goto bad_elf_cleanup_pgdir;
+    }
+    if(elf->e_magic!=ELF_MAGIC){
+        ret=-E_INVAL_ELF;
+        goto bad_elf_cleanup_pgdir;
+    }
+
+    struct proghdr __ph,*ph=&__ph;
+    uint32_t vm_flags, perm, phnum;
+    for (phnum = 0; phnum < elf->e_phnum; phnum ++) {     // 读取所有段(elf->e_phnum即段数)
+        
+        // (3.2) read raw data content in file and resolve proghdr based on info in elfhdr
+        off_t phoff = elf->e_phoff + sizeof(struct proghdr) * phnum;    //第phnum个proghdr(描述一个段)
+        // 读取一个proghdr
+        if ((ret = load_icode_read(fd, ph, sizeof(struct proghdr), phoff)) != 0) {
+            goto bad_cleanup_mmap;
+        }
+        if (ph->p_type != ELF_PT_LOAD) {
+            continue ;
+        }
+        if (ph->p_filesz > ph->p_memsz) {
+            ret = -E_INVAL_ELF;
+            goto bad_cleanup_mmap;
+        }
+        if (ph->p_filesz == 0) {
+            continue ;
+        }
+
+        // (3.3) call mm_map to build vma related to TEXT/DATA
+        vm_flags = 0, perm = PTE_U;
+        if (ph->p_flags & ELF_PF_X) vm_flags |= VM_EXEC;
+        if (ph->p_flags & ELF_PF_W) vm_flags |= VM_WRITE;
+        if (ph->p_flags & ELF_PF_R) vm_flags |= VM_READ;
+        if (vm_flags & VM_WRITE) perm |= PTE_W;
+        // mm_map(....)为当前段创建vma,并插入到mm中
+        if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
+            goto bad_cleanup_mmap;
+        }
+        off_t offset = ph->p_offset;
+        size_t off, size;
+        uintptr_t start = ph->p_va, end, la = ROUNDDOWN(start, PGSIZE);
+
+        ret = -E_NO_MEM;
+        // (3.4) call pgdir_alloc_page to allocate page for TEXT/DATA, read contents in file
+        //        and copy them into the new allocated pages
+        end = ph->p_va + ph->p_filesz;
+        while (start < end) {
+            // 给本段的当前页分配物理页(修改页表)
+            if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+                ret = -E_NO_MEM;
+                goto bad_cleanup_mmap;
+            }
+            off = start - la, size = PGSIZE - off, la += PGSIZE;
+            if (end < la) {
+                size -= la - end;
+            }
+            // 将数据读取到物理页中=>按理说这里读取的是用户程序,为什么要放到内核地址空间?
+            if ((ret = load_icode_read(fd, page2kva(page) + off, size, offset)) != 0) {
+                goto bad_cleanup_mmap;
+            }
+            start += size, offset += size;
+        }
+        end = ph->p_va + ph->p_memsz;
+
+        if (start < la) {
+            /* ph->p_memsz == ph->p_filesz */
+            if (start == end) {
+                continue ;
+            }
+            off = start + PGSIZE - la, size = PGSIZE - off;
+            if (end < la) {
+                size -= la - end;
+            }
+            memset(page2kva(page) + off, 0, size);
+            start += size;
+            assert((end < la && start == end) || (end >= la && start == la));
+        }
+
+        // (3.5) callpgdir_alloc_page to allocate pages for BSS, memset zero in these pages
+        while (start < end) {
+            if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+                ret = -E_NO_MEM;
+                goto bad_cleanup_mmap;
+            }
+            off = start - la, size = PGSIZE - off, la += PGSIZE;
+            if (end < la) {
+                size -= la - end;
+            }
+            memset(page2kva(page) + off, 0, size);
+            start += size;
+        }
+    }
+    sysfile_close(fd);
+
+    // (4) call mm_map to setup user stack, and put parameters into user stack
+    vm_flags = VM_READ | VM_WRITE | VM_STACK;      // 设堆栈段
+    if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
+        goto bad_cleanup_mmap;
+    }
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-2*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-3*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-4*PGSIZE , PTE_USER) != NULL);
+    
+    // (5) setup current process's mm, cr3, reset pgidr (using lcr3 MARCO)
+    mm_count_inc(mm);
+    current->mm = mm;
+    current->cr3 = PADDR(mm->pgdir);
+    lcr3(PADDR(mm->pgdir));
+
+    // (6) setup uargc and uargv in user stacks
+    //setup argc, argv
+    uint32_t argv_size=0, i;
+    for (i = 0; i < argc; i ++) {
+        argv_size += strnlen(kargv[i],EXEC_MAX_ARG_LEN + 1)+1;
+    }
+
+    uintptr_t stacktop = USTACKTOP - (argv_size/sizeof(long)+1)*sizeof(long);
+    char** uargv=(char **)(stacktop  - argc * sizeof(char *));
+    
+    argv_size = 0;
+    for (i = 0; i < argc; i ++) {
+        uargv[i] = strcpy((char *)(stacktop + argv_size ), kargv[i]);
+        argv_size +=  strnlen(kargv[i],EXEC_MAX_ARG_LEN + 1)+1;
+    }
+    
+    stacktop = (uintptr_t)uargv - sizeof(int);
+    *(int *)stacktop = argc;
+    
+    // (7) setup trapframe for user environment
+    struct trapframe *tf = current->tf;
+    memset(tf, 0, sizeof(struct trapframe));
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = stacktop;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags = FL_IF;
+    ret = 0;
+
+out:
+    return ret;
+// (8) if up steps failed, you should cleanup the env.
+bad_cleanup_mmap:
+    exit_mmap(mm);
+bad_elf_cleanup_pgdir:
+    put_pgdir(mm);
+bad_pgdir_cleanup_mm:
+    mm_destroy(mm);
+bad_mm:
+    goto out;
 }
 
 // this function isn't very correct in LAB8
@@ -611,8 +878,7 @@ failed_cleanup:
 
 // do_execve - call exit_mmap(mm)&put_pgdir(mm) to reclaim memory space of current process
 //           - call load_icode to setup new memory space accroding binary prog.
-int
-do_execve(const char *name, int argc, const char **argv) {
+int do_execve(const char *name, int argc, const char **argv) {
     static_assert(EXEC_MAX_ARG_LEN >= FS_MAX_FPATH_LEN);
     struct mm_struct *mm = current->mm;
     if (!(argc >= 1 && argc <= EXEC_MAX_ARG_NUM)) {
@@ -805,9 +1071,13 @@ user_main(void *arg) {
     panic("user_main execve failed.\n");
 }
 
-// init_main - the second kernel thread used to create user_main kernel threads
-static int
-init_main(void *arg) {
+/**
+ * init_main - the second kernel thread used to create user_main kernel threads
+ * 第二个内核线程将要执行的代码(或者说是用init_main来创建第二个内核线程)
+ * 注意init_main内部会再次创建新的线程(使用user_main函数)
+ * user_main就是第一个用户线程
+ **/
+static int init_main(void *arg) {
     int ret;
     if ((ret = vfs_set_bootfs("disk0:")) != 0) {
         panic("set boot fs failed: %e.\n", ret);
@@ -820,8 +1090,8 @@ init_main(void *arg) {
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
- extern void check_sync(void);
-    check_sync();                // check philosopher sync problem
+    extern void check_sync(void);
+    check_sync();                // check philosopher sync problem => 检查线程同步(通过哲学家就餐问题)
 
     while (do_wait(0, NULL) == 0) {
         schedule();
@@ -839,25 +1109,35 @@ init_main(void *arg) {
     return 0;
 }
 
-// proc_init - set up the first kernel thread idleproc "idle" by itself and 
-//           - create the second kernel thread init_main
-void
-proc_init(void) {
+/**
+ * proc_init - set up the first kernel thread idleproc "idle" by itself and 
+ *           - create the second kernel thread init_main
+ * 1.初始化线程链表
+ * 2.将ucore执行以来的所有部分初始化称为idle线程
+ * 3.创建第一个内核线程initproc
+ **/
+void proc_init(void) {
     int i;
+    // 初始化线程链表(会链接所有线程)
+    list_init(&proc_list); 
 
-    list_init(&proc_list);
+    // 初始化所有PCB节点,通过hash可O(1)查找任意进程的PCB
     for (i = 0; i < HASH_LIST_SIZE; i ++) {
         list_init(hash_list + i);
     }
 
+    // ucore开始执行至今,尚无进程/线程;
+    // 这里通过alloc_proc给当前执行的上下文分配一个进程控制块并初始化,将init/entry.S至今的部分打造成第0个线程!
     if ((idleproc = alloc_proc()) == NULL) {
         panic("cannot alloc idleproc.\n");
     }
 
-    idleproc->pid = 0;
+    // 初始化idle线程
+    idleproc->pid = 0;                              //线程id
     idleproc->state = PROC_RUNNABLE;
-    idleproc->kstack = (uintptr_t)bootstack;
-    idleproc->need_resched = 1;
+    idleproc->kstack = (uintptr_t)bootstack;        // idleproc的内核栈就是整个内核的内核栈!
+                                                    // 但是,其他内核线程和用户线程的内核栈,都得单独新建
+    idleproc->need_resched = 1;                     // 可以被调度
     
     if ((idleproc->filesp = files_create()) == NULL) {
         panic("create filesp (idleproc) failed.\n");
@@ -867,8 +1147,10 @@ proc_init(void) {
     set_proc_name(idleproc, "idle");
     nr_process ++;
 
-    current = idleproc;
+    current = idleproc; // 设置当前正在执行的线程为idle => 至此,ucore启动以来的所有执行过程都被认为属于idle线程
 
+
+    // 创建除idle以外的第一个内核线程!
     int pid = kernel_thread(init_main, NULL, 0);
     if (pid <= 0) {
         panic("create init_main failed.\n");
@@ -881,6 +1163,7 @@ proc_init(void) {
     assert(initproc != NULL && initproc->pid == 1);
 }
 
+
 // cpu_idle - at the end of kern_init, the first kernel thread idleproc will do below works
 void
 cpu_idle(void) {
@@ -892,8 +1175,8 @@ cpu_idle(void) {
 }
 
 //FOR LAB6, set the process's priority (bigger value will get more CPU time) 
-void
-lab6_set_priority(uint32_t priority)
+// 设置线程优先级(优先级越高,被执行得越频繁)
+void lab6_set_priority(uint32_t priority)
 {
     if (priority == 0)
         current->lab6_priority = 1;
@@ -902,8 +1185,7 @@ lab6_set_priority(uint32_t priority)
 
 // do_sleep - set current process state to sleep and add timer with "time"
 //          - then call scheduler. if process run again, delete timer first.
-int
-do_sleep(unsigned int time) {
+int do_sleep(unsigned int time) {
     if (time == 0) {
         return 0;
     }

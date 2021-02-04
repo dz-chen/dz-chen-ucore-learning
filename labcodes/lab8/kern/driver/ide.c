@@ -87,8 +87,7 @@ ide_wait_ready(unsigned short iobase, bool check_error) {
     return 0;
 }
 
-void
-ide_init(void) {
+void ide_init(void) {
     static_assert((SECTSIZE % 4) == 0);
     unsigned short ideno, iobase;
     for (ideno = 0; ideno < MAX_IDE; ideno ++) {

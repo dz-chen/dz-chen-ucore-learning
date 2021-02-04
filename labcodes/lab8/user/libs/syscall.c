@@ -5,11 +5,21 @@
 #include <stat.h>
 #include <dirent.h>
 
-
 #define MAX_ARGS            5
 
-static inline int
-syscall(int num, ...) {
+/***********************************************************************************
+ *                              所有系统调用的用户态接口
+ * 
+ * 1.向上为用户层程序提供接口(被./file.c、./dir.c中的函数read()、wrrite()、close()等调用)
+ *   向下调用内核的相关系统调用接口(调用kern/syscall/syscall.c中的内核函数)
+ * 2.如何实现调用内核的函数?
+ *   a.每一个sys_xxx函数都会调用本文件下的syscall(num,..),num代表此函数编号
+ *   b.本文件下的syscall(num,..)通过int 20陷入内核
+ *   c.内核根据陷入时设置的函数编号,调用对应的函数...
+ *   d.内核系统调用返回、用户syscall返回.....
+ * *********************************************************************************/
+
+static inline int syscall(int num, ...) {
     va_list ap;
     va_start(ap, num);
     uint32_t a[MAX_ARGS];
@@ -20,7 +30,8 @@ syscall(int num, ...) {
     va_end(ap);
 
     // 设置要调用的系统函数的编号、输入参数等信息
-    // 但是所有系统调用共享一个中断号0x80;从int 0x80进入系统调用后,再根据函数的编号分发到具体的系统调用程序
+    // 但是所有系统调用共享一个中断号0x80;
+    // 从int 0x80进入系统调用后,再根据函数的编号分发到具体的系统调用程序
     asm volatile (
         "int %1;"
         : "=a" (ret)

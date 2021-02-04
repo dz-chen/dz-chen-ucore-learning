@@ -42,8 +42,9 @@ typedef intptr_t off_t;
 typedef size_t ppn_t;
 
 /* *
- * Rounding operations (efficient when n is a power of 2)
- * Round down to the nearest multiple of n
+ * Rounding operations (efficient when n is a power of 2) Round down to the nearest multiple of n
+ * 将a舍入到n的不超过a的最小倍数
+ * 常用举例:ROUNDDOWN(addr, PGSIZE) => 得到addr所属页的起始地址
  * */
 #define ROUNDDOWN(a, n) ({                                          \
             size_t __a = (size_t)(a);                               \

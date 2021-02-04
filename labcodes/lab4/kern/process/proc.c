@@ -328,7 +328,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     // 3.复制或共享内存管理结构mm
     copy_mm(clone_flags,proc);       //lab4不需要使用
     // 4.设置tf & context
-    copy_thread(proc,stack,tf);      // 第二个参数esp就是父进程的栈指针; 传入0就是创建内核线程
+    copy_thread(proc,stack,tf);      // 第二个参数esp就是父进程的栈指针; 传入0则内核线程
     
     /*******************************************************
      *              5.新线程插入双向链表和hash表

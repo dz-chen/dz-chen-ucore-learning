@@ -141,12 +141,13 @@ sfs_init_freemap(struct device *dev, struct bitmap *freemap, uint32_t blkno, uin
 
 /*
  * sfs_do_mount - mount sfs file system.
- *
- * @dev:        the block device contains sfs file system
- * @fs_store:   the fs struct in memroy
+ * 加载位于硬盘上的SFS文件系统的超级块superblock和freemap的工作.
+ * 这样,在内存中就有了SFS文件系统的全局信息.
+ * 参数:
+ *      - dev:        the block device contains sfs file system
+ *      - fs_store:   the fs struct in memroy
  */
-static int
-sfs_do_mount(struct device *dev, struct fs **fs_store) {
+static int sfs_do_mount(struct device *dev, struct fs **fs_store) {
     static_assert(SFS_BLKSIZE >= sizeof(struct sfs_super));
     static_assert(SFS_BLKSIZE >= sizeof(struct sfs_disk_inode));
     static_assert(SFS_BLKSIZE >= sizeof(struct sfs_disk_entry));

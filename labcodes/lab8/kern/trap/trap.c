@@ -318,14 +318,18 @@ void trap(struct trapframe *tf) {
         trap_dispatch(tf);
     
         current->tf = otf;
+
+        // 如果中断是在用户态发生的
         if (!in_kernel) {
             if (current->flags & PF_EXITING) {
                 do_exit(-E_KILLED);
             }
-            if (current->need_resched) {
+            if (current->need_resched) {    // 释放当前线程的cpu,选择新的线程投入执行
                 schedule();
             }
         }
+
+        // 在内核发生,不会重新调度 => 体现了内核的不可抢占性 
     }
 }
 

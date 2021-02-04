@@ -148,7 +148,7 @@ struct segdesc {
 
 /**
  * task state segment format (as described by the Pentium architecture book) 
- * 任务状态段,保存线程切换时的现场信息
+ * 任务状态段,保存线程切换时的现场信息(ucore主要用于优先级切换)
  * ucore中主要使用其中的ss0、esp0
  * */
 struct taskstate {
@@ -217,7 +217,7 @@ struct taskstate {
 // page number field of address
 #define PPN(la) (((uintptr_t)(la)) >> PTXSHIFT)
 
-// offset in page
+// offset in page => 返回页内偏移
 #define PGOFF(la) (((uintptr_t)(la)) & 0xFFF)
 
 // construct linear address from indexes and offset
@@ -226,7 +226,7 @@ struct taskstate {
 
 // address in page table or page directory entry
 // 返回二级页表项pte存储的物理页号
-#define PTE_ADDR(pte)   ((uintptr_t)(pte) & ~0xFFF)
+#define PTE_ADDR(pte)   ((uintptr_t)(pte) & ~0xFFF)   // ~0xFFF抹掉了最低12位,就是为了仅获得页号部分
 // 返回一级页表项pde存储的物理页号
 #define PDE_ADDR(pde)   PTE_ADDR(pde)
 
@@ -243,13 +243,13 @@ struct taskstate {
 #define PDXSHIFT        22                      // offset of PDX in a linear address
 
 /* page table/directory entry flags */
-#define PTE_P           0x001                   // Present
+#define PTE_P           0x001                   // Present            页是否在内存
 #define PTE_W           0x002                   // Writeable
 #define PTE_U           0x004                   // User
 #define PTE_PWT         0x008                   // Write-Through
 #define PTE_PCD         0x010                   // Cache-Disable
-#define PTE_A           0x020                   // Accessed
-#define PTE_D           0x040                   // Dirty
+#define PTE_A           0x020                   // Accessed           页是否被访问过
+#define PTE_D           0x040                   // Dirty              页是否被修改
 #define PTE_PS          0x080                   // Page Size
 #define PTE_MBZ         0x180                   // Bits must be zero
 #define PTE_AVAIL       0xE00                   // Available for software use

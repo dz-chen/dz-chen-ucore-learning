@@ -8,8 +8,7 @@
  *
  * called by: sfs_load_inode, sfs_sync, sfs_reclaim
  */
-void
-lock_sfs_fs(struct sfs_fs *sfs) {
+void lock_sfs_fs(struct sfs_fs *sfs) {
     down(&(sfs->fs_sem));
 }
 

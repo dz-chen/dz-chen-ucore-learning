@@ -37,16 +37,19 @@ int kern_init(void) {
     pmm_init();                 // 初始化物理内存管理(=> 从调用pmm_init开始,进入地址映射的第三个阶段)
 
     pic_init();                 // 初始化中断控制器(8259A),programable interupt controller
+    
     idt_init();                 // 初始化IDT(对比GDT的初始化,在bootasm.S)
 
-    vmm_init();                 // init virtual memory management
-    sched_init();               // init scheduler
-    proc_init();                // init process table
-    
-    ide_init();                 // init ide devices
-    swap_init();                // init swap
+    vmm_init();                 // 初始化虚拟内存管理
 
-   
+    sched_init();               // 初始化调度器
+
+    proc_init();                // 进程/线程相关的初始化(创建内核线程idleproc、initproc)
+
+    ide_init();                 // 初始化IDE设备
+
+    swap_init();                // 初始化swap分区 => 物理内存的页面置换(fifo)在这个组件中实现
+
     fs_init();                  // 初始化文件系统
     
     clock_init();               // 初始化时钟(使能时钟中断)

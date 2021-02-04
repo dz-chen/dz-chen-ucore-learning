@@ -6,8 +6,8 @@
 #include <pmm.h>
 #include <assert.h>
 
-void
-swapfs_init(void) {
+// 初始化交换分区
+void swapfs_init(void) {
     static_assert((PGSIZE % SECTSIZE) == 0);
     if (!ide_device_valid(SWAP_DEV_NO)) {
         panic("swap fs isn't available.\n");

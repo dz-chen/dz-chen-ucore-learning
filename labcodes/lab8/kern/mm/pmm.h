@@ -32,7 +32,8 @@ struct Page *alloc_pages(size_t n);
 void free_pages(struct Page *base, size_t n);
 size_t nr_free_pages(void);
 
-#define alloc_page() alloc_pages(1)
+
+#define alloc_page() alloc_pages(1)             // 分配一个物理页面
 #define free_page(page) free_pages(page, 1)
 
 pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create);
@@ -85,7 +86,7 @@ static inline ppn_t page2ppn(struct Page *page) {
     return page - pages;
 }
 
-// 输入page指针,返回该页的物理地址
+// 输入page指针,返回该页的物理地址(即物理页的起始地址:物理页号左移12bits)
 static inline uintptr_t page2pa(struct Page *page) {
     return page2ppn(page) << PGSHIFT;
 }
@@ -99,8 +100,11 @@ pa2page(uintptr_t pa) {
     return &pages[PPN(pa)];
 }
 
-static inline void *
-page2kva(struct Page *page) {
+
+/**
+ * 输入Page,返回该物理页对应的内核虚拟地址
+ */ 
+static inline void *page2kva(struct Page *page) {
     return KADDR(page2pa(page));
 }
 
@@ -118,6 +122,7 @@ pte2page(pte_t pte) {
     return pa2page(PTE_ADDR(pte));
 }
 
+// 输入一级页表项,返回对应二级页表的Page结构体指针
 static inline struct Page *
 pde2page(pde_t pde) {
     return pa2page(PDE_ADDR(pde));

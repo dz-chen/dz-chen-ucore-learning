@@ -318,7 +318,7 @@ int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
                 goto failed;
             }
             break;
-        case 1: /* error code flag : (W/R=0, P=1): read, present */ // 向读且在内存,这为什么也算fault ??? 
+        case 1: /* error code flag : (W/R=0, P=1): read, present */ // 想读且在内存,这为什么也算fault ??? 
             cprintf("do_pgfault failed: error code flag = read AND present\n");
             goto failed;
         case 0: /* error code flag : (W/R=0, P=0): read, not present */
@@ -393,14 +393,16 @@ int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     #endif
     /************************* LAB3 EXERCISE 1 *****************************/
     // (1)找到addr对应的pte.如果pte所在的页表不存在,则创建页表 => 详看get_pte
-    ptep=get_pte(boot_pgdir,addr,1);     //boot_pgdir也可改为mm->pgdir,因为mm->pgdir就是初始化为boot_pgdir
+    //ptep=get_pte(boot_pgdir,addr,1);     //boot_pgdir也可改为mm->pgdir,因为mm->pgdir就是初始化为boot_pgdir => 更正:严格说只能mm->pgdir,因为boot_pgdir是内核的PDT,而真实情况可能用到用户进程的PDT
+    ptep=get_pte(mm->pgdir,addr,1);
     if(ptep==NULL){
         cprintf("err at vmm.c/do_pgfault():get_pte failed!");
         goto failed;
     }
     // (2)如果虚拟地址没有映射到物理地址,分配一个物理页面并完成映射 (对于虚拟地址映射到物理地址的情况,应该是不会进入的do_pgfault的)
     if(*ptep==0){
-        struct Page* pg=pgdir_alloc_page(boot_pgdir,addr,perm);  //  //boot_pgdir也可改为mm->pgdir
+        //struct Page* pg=pgdir_alloc_page(boot_pgdir,addr,perm);  //  //boot_pgdir也可改为mm->pgdir => 更正:严格说只能mm->pgdir
+        struct Page* pg=pgdir_alloc_page(mm->pgdir,addr,perm);
         if(pg==NULL){
             cprintf("err at vmm.c/do_pgfault():pgdir_alloc_page failed!");
             goto failed;

@@ -7,16 +7,18 @@
 #include <sfs.h>
 #include <inode.h>
 #include <assert.h>
-//called when init_main proc start
-void
-fs_init(void) {
-    vfs_init();             // 文件系统抽闲层
+
+/**
+ * 初始化文件系统
+ * 在init.c/kern_init()函数中被调用
+ */ 
+void fs_init(void) {
+    vfs_init();             // 文件系统抽象层
     dev_init();             // 设备IO层
     sfs_init();             // SFS文件系统
 }
 
-void
-fs_cleanup(void) {
+void fs_cleanup(void) {
     vfs_cleanup();
 }
 

@@ -6,33 +6,37 @@
 #include <bitmap.h>
 #include <assert.h>
 
-//Basic block-level I/O routines
+/************************************************************************************
+ *                      Basic block-level I/O routines
+ * ***********************************************************************************/
 
 /* sfs_rwblock_nolock - Basic block-level I/O routine for Rd/Wr one disk block,
  *                      without lock protect for mutex process on Rd/Wr disk block
- * @sfs:   sfs_fs which will be process
- * @buf:   the buffer uesed for Rd/Wr
- * @blkno: the NO. of disk block
- * @write: BOOL: Read or Write
- * @check: BOOL: if check (blono < sfs super.blocks)
+ * 读/写磁盘块blkno(只能读/写一个block)
+ * -sfs:   sfs_fs which will be process
+ * -buf:   the buffer uesed for Rd/Wr
+ * -blkno: the NO. of disk block
+ * -write: BOOL: Read or Write
+ * -check: BOOL: if check (blono < sfs super.blocks)
  */
-static int
-sfs_rwblock_nolock(struct sfs_fs *sfs, void *buf, uint32_t blkno, bool write, bool check) {
+static int sfs_rwblock_nolock(struct sfs_fs *sfs, void *buf, uint32_t blkno, bool write, bool check) {
     assert((blkno != 0 || !check) && blkno < sfs->super.blocks);
     struct iobuf __iob, *iob = iobuf_init(&__iob, buf, SFS_BLKSIZE, blkno * SFS_BLKSIZE);
     return dop_io(sfs->dev, iob, write);
 }
 
-/* sfs_rwblock - Basic block-level I/O routine for Rd/Wr N disk blocks ,
+/**
+ *  sfs_rwblock - Basic block-level I/O routine for Rd/Wr N disk blocks ,
  *               with lock protect for mutex process on Rd/Wr disk block
- * @sfs:   sfs_fs which will be process
- * @buf:   the buffer uesed for Rd/Wr
- * @blkno: the NO. of disk block
- * @nblks: Rd/Wr number of disk block
- * @write: BOOL: Read - 0 or Write - 1
+ * 读/写 nblks个磁盘块(buf与blkno之间的IO)
+ * 注意:需要上锁
+ * -sfs:   sfs_fs which will be process
+ * -buf:   the buffer uesed for Rd/Wr
+ * -blkno: the NO. of disk block
+ * -nblks: Rd/Wr number of disk block
+ * -write: BOOL: Read - 0 or Write - 1
  */
-static int
-sfs_rwblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks, bool write) {
+static int sfs_rwblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks, bool write) {
     int ret = 0;
     lock_sfs_io(sfs);
     {
@@ -49,39 +53,40 @@ sfs_rwblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks, bool 
 }
 
 /* sfs_rblock - The Wrap of sfs_rwblock function for Rd N disk blocks ,
- *
- * @sfs:   sfs_fs which will be process
- * @buf:   the buffer uesed for Rd/Wr
- * @blkno: the NO. of disk block
- * @nblks: Rd/Wr number of disk block
+ * 从磁盘块blkno开始,读取nbloks个block的数据(读到的数据存放到buf)
+ * -sfs:   sfs_fs which will be process
+ * -buf:   the buffer uesed for Rd/Wr
+ * -blkno: the NO. of disk block
+ * -nblks: Rd/Wr number of disk block
  */
-int
-sfs_rblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks) {
+int sfs_rblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks) {
     return sfs_rwblock(sfs, buf, blkno, nblks, 0);
 }
 
-/* sfs_wblock - The Wrap of sfs_rwblock function for Wr N disk blocks ,
- *
- * @sfs:   sfs_fs which will be process
- * @buf:   the buffer uesed for Rd/Wr
- * @blkno: the NO. of disk block
- * @nblks: Rd/Wr number of disk block
+/**
+ *  sfs_wblock - The Wrap of sfs_rwblock function for Wr N disk blocks ,
+ * 从磁盘块blkno开始,写入nbloks个block的数据(数据来自buf)
+ * 注意:仅针对buf中数据为整数个block的情况,否则应该使用sfs_wbuf
+ * -sfs:   sfs_fs which will be process
+ * -buf:   the buffer uesed for Rd/Wr
+ * -blkno: the NO. of disk block
+ * -nblks: Rd/Wr number of disk block
  */
-int
-sfs_wblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks) {
+int sfs_wblock(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks) {
     return sfs_rwblock(sfs, buf, blkno, nblks, 1);
 }
 
 /* sfs_rbuf - The Basic block-level I/O routine for  Rd( non-block & non-aligned io) one disk block(using sfs->sfs_buffer)
  *            with lock protect for mutex process on Rd/Wr disk block
- * @sfs:    sfs_fs which will be process
- * @buf:    the buffer uesed for Rd
- * @len:    the length need to Rd
- * @blkno:  the NO. of disk block
- * @offset: the offset in the content of disk block
+ * 将磁盘块blkno中偏移第offset开始的len字节数据读取到缓冲区buf
+ * 注意:需要使用中间缓存(sfs->sfs_buffer)
+ * -sfs:    sfs_fs which will be process
+ * -buf:    the buffer uesed for Rd
+ * -len:    the length need to Rd
+ * -blkno:  the NO. of disk block
+ * -offset: the offset in the content of disk block
  */
-int
-sfs_rbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset) {
+int sfs_rbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset) {
     assert(offset >= 0 && offset < SFS_BLKSIZE && offset + len <= SFS_BLKSIZE);
     int ret;
     lock_sfs_io(sfs);
@@ -94,22 +99,30 @@ sfs_rbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset
     return ret;
 }
 
-/* sfs_wbuf - The Basic block-level I/O routine for  Wr( non-block & non-aligned io) one disk block(using sfs->sfs_buffer)
- *            with lock protect for mutex process on Rd/Wr disk block
- * @sfs:    sfs_fs which will be process
- * @buf:    the buffer uesed for Wr
- * @len:    the length need to Wr
- * @blkno:  the NO. of disk block
- * @offset: the offset in the content of disk block
+/** sfs_wbuf - The Basic block-level I/O routine for Wr( non-block & non-aligned io) one disk block(using sfs->sfs_buffer) with lock protect for mutex process on Rd/Wr disk block
+ * 将缓冲区buf中的数据写到磁盘块blkno(仅针对buf中数据不足一个block的情况 => 对比sfs_wblock)
+ * 注意:
+ * 1.从磁盘块blkno内的offset字节开始,写入len个字节
+ * 2.需要上锁(通过sfs_fs中的信号量实现)
+ * 3.不能超过一个block(因为磁盘IO以block为单位)
+ * 4.这个过程中还使用了中间缓冲区sfs_buffer!!!
+ * -sfs:    sfs_fs which will be process
+ * -buf:    the buffer uesed for Wr
+ * -len:    the length need to Wr
+ * -blkno:  the NO. of disk block
+ * -offset: the offset in the content of disk block
  */
-int
-sfs_wbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset) {
+int sfs_wbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset) {
     assert(offset >= 0 && offset < SFS_BLKSIZE && offset + len <= SFS_BLKSIZE);
     int ret;
     lock_sfs_io(sfs);
-    {
+    {   
+        // 1.先将要写的那个磁盘块读取到内存缓冲区(读到sfs对应的缓冲区sfs_buffer)
         if ((ret = sfs_rwblock_nolock(sfs, sfs->sfs_buffer, blkno, 0, 1)) == 0) {
+            // 2.将要写的数据buf写入sfs_buffer
             memcpy(sfs->sfs_buffer + offset, buf, len);
+
+            // 3.再将sfs_buffer写入到磁盘
             ret = sfs_rwblock_nolock(sfs, sfs->sfs_buffer, blkno, 1, 1);
         }
     }
@@ -117,11 +130,10 @@ sfs_wbuf(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset
     return ret;
 }
 
-/*
+/**
  * sfs_sync_super - write sfs->super (in memory) into disk (SFS_BLKN_SUPER, 1) with lock protect.
  */
-int
-sfs_sync_super(struct sfs_fs *sfs) {
+int sfs_sync_super(struct sfs_fs *sfs) {
     int ret;
     lock_sfs_io(sfs);
     {

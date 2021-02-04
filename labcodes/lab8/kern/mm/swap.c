@@ -9,6 +9,14 @@
 #include <default_pmm.h>
 #include <kdebug.h>
 
+/*****************************************************************************
+ *                            物理页面置换公共接口
+ * 1.关键函数
+ *    swap_out()、swap_in()
+ * 2.
+ * ***************************************************************************/
+
+
 // the valid vaddr for check is between 0~CHECK_VALID_VADDR-1
 #define CHECK_VALID_VIR_PAGE_NUM 5
 #define BEING_CHECK_VALID_VADDR 0X1000
@@ -18,7 +26,10 @@
 // the max access seq number
 #define MAX_SEQ_NO 10
 
+// 全局变量:页面置换管理器
+// ucore采用的是swap_fifo.c中FIFO置换算法
 static struct swap_manager *sm;
+
 size_t max_swap_offset;
 
 volatile int swap_init_ok = 0;
@@ -29,8 +40,12 @@ unsigned int swap_in_seq_no[MAX_SEQ_NO],swap_out_seq_no[MAX_SEQ_NO];
 
 static void check_swap(void);
 
-int
-swap_init(void)
+/**
+ *        初始化swap(被kern_init调用)
+ * 1.初始化文件系统中的swap分区=> swapfs_init()
+ * 2.完成页面置换管理器的初始化(对于FIFO而言,就是初始化队列)
+ */ 
+int swap_init(void)
 {
      swapfs_init();
 
@@ -53,34 +68,53 @@ swap_init(void)
      return r;
 }
 
-int
-swap_init_mm(struct mm_struct *mm)
+/**
+ * 初始化mm_struct的成员sm_priv
+ * 从而将该进程与其在内存中的页面联系起来 
+ */
+int swap_init_mm(struct mm_struct *mm)
 {
      return sm->init_mm(mm);
 }
 
-int
-swap_tick_event(struct mm_struct *mm)
+
+/**
+ * 操作可以为空
+ */ 
+int swap_tick_event(struct mm_struct *mm)
 {
      return sm->tick_event(mm);
 }
 
-int
-swap_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
+/***
+ * 调用swap_manager的map_swappable()函数,将page加入置换队列
+ * - mm:当前进程的mm_struct
+ * - addr:数据的虚拟地址
+ * - page:数据对应的物理内存页
+ * - swap_in:换入内存/换出内存的标志
+ * **/
+int swap_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
 {
      return sm->map_swappable(mm, addr, page, swap_in);
 }
 
-int
-swap_set_unswappable(struct mm_struct *mm, uintptr_t addr)
+/**
+ * 标记addr对应的页面不能被置换出去
+ * => 目前是空操作
+ */ 
+int swap_set_unswappable(struct mm_struct *mm, uintptr_t addr)
 {
      return sm->set_unswappable(mm, addr);
 }
 
 volatile unsigned int swap_out_num=0;
 
-int
-swap_out(struct mm_struct *mm, int n, int in_tick)
+
+/**
+ * 从进程(mm_struct)的物理页面中,选出n个,换出到磁盘
+ * !!!注:需要修改二级页表项 => 由物理页号 修改为  磁盘地址; PTE_P也要修改
+ */ 
+int swap_out(struct mm_struct *mm, int n, int in_tick)
 {
      int i;
      for (i = 0; i != n; ++ i)
@@ -89,6 +123,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           //struct Page **ptr_page=NULL;
           struct Page *page;
           // cprintf("i %d, SWAP: call swap_out_victim\n",i);
+          // 选出牺牲页
           int r = sm->swap_out_victim(mm, &page, in_tick);
           if (r != 0) {
                     cprintf("i %d, swap_out: call swap_out_victim failed\n",i);
@@ -98,10 +133,11 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
 
           //cprintf("SWAP: choose victim page 0x%08x\n", page);
           
-          v=page->pra_vaddr; 
-          pte_t *ptep = get_pte(mm->pgdir, v, 0);
+          v=page->pra_vaddr;          // 牺牲页的虚拟地址
+          pte_t *ptep = get_pte(mm->pgdir, v, 0);          // 二级页表项
           assert((*ptep & PTE_P) != 0);
 
+          // 将该页的内容写到磁盘
           if (swapfs_write( (page->pra_vaddr/PGSIZE+1)<<8, page) != 0) {
                     cprintf("SWAP: failed to save\n");
                     sm->map_swappable(mm, v, page, 0);
@@ -109,7 +145,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           }
           else {
                     cprintf("swap_out: i %d, store page in vaddr 0x%x to disk swap entry %d\n", i, v, page->pra_vaddr/PGSIZE+1);
-                    *ptep = (page->pra_vaddr/PGSIZE+1)<<8;
+                    *ptep = (page->pra_vaddr/PGSIZE+1)<<8;  // 将二级页表项内容由物理页号改为磁盘地址
                     free_page(page);
           }
           
@@ -118,8 +154,11 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
      return i;
 }
 
-int
-swap_in(struct mm_struct *mm, uintptr_t addr, struct Page **ptr_result)
+
+/**
+ * 换入进程(mm_struct)虚拟地址addr对应的磁盘页面
+ */ 
+int swap_in(struct mm_struct *mm, uintptr_t addr, struct Page **ptr_result)
 {
      struct Page *result = alloc_page();
      assert(result!=NULL);
@@ -139,8 +178,8 @@ swap_in(struct mm_struct *mm, uintptr_t addr, struct Page **ptr_result)
 
 
 
-static inline void
-check_content_set(void)
+// 被check_swap()调用
+static inline void check_content_set(void)
 {
      *(unsigned char *)0x1000 = 0x0a;
      assert(pgfault_num==1);
@@ -160,8 +199,8 @@ check_content_set(void)
      assert(pgfault_num==4);
 }
 
-static inline int
-check_content_access(void)
+// 被check_swap()调用
+static inline int check_content_access(void)
 {
     int ret = sm->check_swap();
     return ret;
@@ -176,8 +215,14 @@ extern free_area_t free_area;
 #define free_list (free_area.free_list)
 #define nr_free (free_area.nr_free)
 
-static void
-check_swap(void)
+
+/**
+ * 检验换入换出机制
+ * 不过检验时使用的check_mm_struct不属于任何进程,只是起到模拟的作用 
+ * 调用关系:kern_init -> swap_init -> check_swap
+ *   => ucore的用户线程实际运行时不会换入换出(不过可以自行实现!)
+ */ 
+static void check_swap(void)
 {
     //backup mem env
      int ret, count = 0, total = 0, i;

@@ -48,8 +48,9 @@
 
 /****
  * registers as pushed by pushal
- *  pushal即: Push All General-Purpose Registers => 将所有通用寄存器压栈
- * */
+ * pushal即: Push All General-Purpose Registers => 将所有通用寄存器压栈
+ * 存储通用寄存器中的值 
+ **/
 struct pushregs {
     uint32_t reg_edi;
     uint32_t reg_esi;
@@ -64,13 +65,16 @@ struct pushregs {
 
 
 /**
- * trapframe与中断上下文的关系?
- * 保存中断前的相关寄存器信息
- * 段寄存器只需使用16位的选择子,所以另外16位设置为tf_paddingx !
- * 注意下面的压栈顺序:tf_ss、tf_esp ....tf_regs
+ * 1.保存中断前的相关寄存器信息,方便中断返回时恢复寄存器状态;最重要的寄存器信息 => eip(指令流)、esp(栈)
+ * 2.段寄存器只需使用16位的选择子,所以另外16位设置为tf_paddingx !
+ * 3.注意下面的压栈顺序:tf_ss、tf_esp ....tf_regs
+ * 4.详见tranentry.S,了解压栈构造trapframe的过程,构造trapframe就是将相应信息压入内核栈
+ * 5.如何找到内核栈的? tss,它保存了内核栈的esp和ss
+ * 6.若中断发生在用户态,则存储的是用于态程序的信息 => esp是用户栈顶!!!
+ * 7.若中断发生在内核态,则存储的是用户态程序的信息 => esp是内核栈顶!!!
  **/
 struct trapframe {
-    struct pushregs tf_regs;
+    struct pushregs tf_regs;  // 储存通用寄存器中的值
     uint16_t tf_gs;
     uint16_t tf_padding0;
     uint16_t tf_fs;
@@ -79,16 +83,19 @@ struct trapframe {
     uint16_t tf_padding2;
     uint16_t tf_ds;
     uint16_t tf_padding3;
-    uint32_t tf_trapno;        
-    /* below here defined by x86 hardware */
-    uint32_t tf_err;        // tf_regs ....tf_err这部分内容调用中断处理程序时压栈,详见vectors.S和trapentry.S
+    uint32_t tf_trapno;     // tf_regs ....tf_trapno这部分内容调用中断处理程序时压栈,详见vectors.S和trapentry.S
+    
+    // below here defined by x86 hardware
+    uint32_t tf_err;        
     uintptr_t tf_eip;     
     uint16_t tf_cs;
     uint16_t tf_padding4;
-    uint32_t tf_eflags;    // tf_eip...tf_eflags这部分在执行INT 指令时由硬件压栈
-    /* below here only when crossing rings, such as from user to kernel */
-    uintptr_t tf_esp;   
-    uint16_t tf_ss;
+    uint32_t tf_eflags;    // tf_err...tf_eflags这部分在执行INT 指令时由硬件压栈
+    
+    // below here only when crossing rings, such as from user to kernel,这部分涉及栈的切换 
+    // 如果是在内核态发生的中断,则不需要这部分
+    uintptr_t tf_esp;      // 线程陷入内核前用户栈顶指针寄存器值 => 方便回到用户态时恢复用户栈...
+    uint16_t tf_ss;        // 线程陷入内核前的堆栈段段寄存器值
     uint16_t tf_padding5;  // tf_esp...tf_ss这部分在特权级切换时压栈
 } __attribute__((packed));
 

@@ -216,9 +216,10 @@ runit:
 
 int
 main(int argc, char **argv) {
-    printf("user sh is running!!!");
+    printf("user sh is running!!!\n");
     int ret, interactive = 1;
     if (argc == 2) {
+        //printf("-------------------------- test by cdz,argc=2 in command");
         if ((ret = reopen(0, argv[1], O_RDONLY)) != 0) {
             return ret;
         }
@@ -228,6 +229,8 @@ main(int argc, char **argv) {
         usage();
         return -1;
     }
+    //printf("-------------------------- test by cdz,argc=%d\n",argc);
+    
     //shcwd = malloc(BUFSIZE);
     assert(shcwd != NULL);
 

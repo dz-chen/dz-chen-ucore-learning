@@ -23,15 +23,18 @@ enum proc_state {
 // which are caller save, but not the return register %eax.
 // (Not saving %eax just simplifies the switching code.)
 // The layout of context must match code in switch.S.
+// 保存线程被切换时的寄存器状态,方便下次切换回来时恢复当时的状态
+// 最重要的寄存器信息 => eip(指令流)、esp(栈)
+// 注:线程切换只可能在内核态发生,所以context保存的信息都是在内核态时的寄存器信息...
 struct context {
-    uint32_t eip;
-    uint32_t esp;
-    uint32_t ebx;
-    uint32_t ecx;
-    uint32_t edx;
-    uint32_t esi;
-    uint32_t edi;
-    uint32_t ebp;
+    uint32_t eip;       // 线程上次停止执行时的下一条指令地址;           trapframe也有 
+    uint32_t esp;       // 线程上次停止执行时的栈顶指针(这个栈是内核栈);  trapframe也有
+    uint32_t ebx;       // trapframe也有
+    uint32_t ecx;       // trapframe也有
+    uint32_t edx;       // trapframe也有
+    uint32_t esi;       // trapframe也有
+    uint32_t edi;       // trapframe也有
+    uint32_t ebp;       // trapframe也有
 };
 
 #define PROC_NAME_LEN               50
@@ -55,25 +58,25 @@ struct proc_struct {
     int pid;                                    // 线程ID
     int runs;                                   // 线程已经被执行了的次数
     uintptr_t kstack;                           // 内核栈的虚拟地址(位于内核物理/虚拟地址空间,内核栈是线程私有的!)
-    volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU? => 若当前线程正在执行,则此值应该为1; 否则为0
+    volatile bool need_resched;                 // 若当前线程正在执行,则此值应该为1,适当时候会被切换; 否则为0
     struct proc_struct *parent;                 // 父线程/进程的结构体;(除idle外,其他都有父进程/线程)
-    struct mm_struct *mm;                       // 虚拟地址管理结构 => 这个是进程内多个线程共享!
-    struct context context;                     // 线程上下文
-    struct trapframe *tf;                       // 中断上下文?
+    struct mm_struct *mm;                       // 虚拟地址管理结构(进程内多个线程共享)!
+    struct context context;                     // 线程上下文(仅用于线程切换)
+    struct trapframe *tf;                       // 中断上下文=> 中断发生时,相关寄存器压入内核栈,tf指针就是指向内核栈中该位置...
     uintptr_t cr3;                              // 页目录表的物理地址(cr3寄存器内容) => 进程内多个线程共享
     uint32_t flags;                             // Process flag
     char name[PROC_NAME_LEN + 1];               // 线程名
     list_entry_t list_link;                     // Process link list
-    list_entry_t hash_link;                     // Process hash list
+    list_entry_t hash_link;                     // 详见proc.h; 它作为hash_list的val(key是pid),方便根据pid直接定位线程控制块
     int exit_code;                              // exit code (be sent to parent proc)
-    uint32_t wait_state;                        // waiting state
-    struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-    struct run_queue *rq;                       // 就绪队列的指针(整个os只有一个就绪队列,因此这个指针应该是所有线程共享的)
-    list_entry_t run_link;                      // 通过这个字段链接进就绪队列(Round Robin)
+    uint32_t wait_state;                        // waiting state => 当前线程被阻塞的原因
+    struct proc_struct *cptr, *yptr, *optr;     // cptr:子线程; yptr:更年轻的兄弟线程; optr:更老的兄弟线程
+                                                // 所有同辈的线程通过yptr、optr指针就形成了一条链; 不同辈的线程通过parent、cptr形成层级关系
+    struct run_queue *rq;                       // 就绪队列的指针(整个os只有一个就绪队列,因此这个指针应该是所有线程/进程共享的)
+    list_entry_t run_link;                      // 通过这个字段链接进就绪队列(Round Robin算法时)
     int time_slice;                             // 剩余时间片大小=> 对于正在执行的线程,每隔一个节拍会减1
-    skew_heap_entry_t lab6_run_pool;            // 类似于run_list,只是这里就绪队列被组织成优先队列,供stride算法使用!
+    skew_heap_entry_t lab6_run_pool;            // 类似于run_link,只是这里就绪队列被组织成优先队列,供stride算法使用!
     uint32_t lab6_stride;                       // stride值,供stride算法使用 => 每次调度时选取stride值最小的线程执行
-                                                //
     uint32_t lab6_priority;                     // 线程优先级,供stride算法使用
     struct files_struct *filesp;                // 文件相关的信息(进程内的所有线程共享) => 进程的工作目录、打开文件表、共享文件的线程数...
 };

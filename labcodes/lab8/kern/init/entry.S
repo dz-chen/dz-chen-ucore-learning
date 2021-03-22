@@ -4,18 +4,17 @@
 #define REALLOC(x) (x - KERNBASE) 
 # KERNBASE:0xC0000000
 
-
 # bootloader将控制交给kern_entry,执行kern_entry后才调用init.c中的kern_init()函数
 # kern_entry的作用:
 # 1.初步建立页目录表_boot_gpdir
-# 2.使能分页机制
-# 3 4 设置内核堆栈等...
-# 5.设置内核栈,然后才特征是跳转到内核的C程序
+# 2.使能分页机制(才能使用TLB、cr3寄存器=> cpu通过cr3寄存器自动查找页表等...)
+# 3 4 将内核迁移到虚拟地址高端...
+# 5.设置内核栈以及堆栈指针,然后才是跳转到内核的C程序
 
 
 # ################### 补充:地址映射的三个阶段
 # 第一阶段:从开始执行bootloader到调用kern_entry之前 : 开启保护模式,创建并启动段表(GDT)
-#          => map va 0 ~ 1MB to pa 0 ~ 1MB 
+#          => map va 0 ~ ...MB to pa 0 ~ ...MB, 即物理地址等于虚拟地址,且ucore已经放置到了1MB以上
 # 第二阶段:从开始执行kern_entry到调用pmm_init之前   : 创建初始页目录表,开启分页模式
 #          => 1.刚使能分页机制后,地址映射如下:
 #                   map va 0 ~ 4M to pa 0 ~ 4M (temporary)
@@ -34,7 +33,7 @@ kern_entry:
     movl $REALLOC(__boot_pgdir), %eax    # __boot_pgdir是页目录表的虚拟地址;REALLOC宏将其转换为相对于内核起始地址的偏移
     movl %eax, %cr3                      # cr3存的是物理地址!! 而不是虚拟地址
 
-    # 2.enable paging => 设置cr0的相应标志位,使能分页机制(CR0_PG标志位)
+    # 2.enable paging => 设置cr0的相应标志位,使能分页机制(CR0_PG标志位) => 才能使用TLB等...
     movl %cr0, %eax
     orl $(CR0_PE | CR0_PG | CR0_AM | CR0_WP | CR0_NE | CR0_TS | CR0_EM | CR0_MP), %eax
     andl $~(CR0_TS | CR0_EM), %eax
@@ -49,7 +48,6 @@ kern_entry:
     #   => 因为next处于KERNBASE以上的虚拟地址(kernel.ld设置),跳转后自动到了高地址,eip自动更新
     jmp *%eax
 next:
-
     # 4.unmap va 0 ~ 4M, it's temporary mapping
     # 取消页目录表的第一个Entry,于是便没有0~4MB(va) 到 0~4MB(pa)的映射
     # 结合上面的jmp,从而实现将内核由虚拟地址0~4MB迁移到虚拟地址KERNBASE~KERNBASE+4MB 
@@ -99,7 +97,8 @@ __boot_pgdir:
     .space PGSIZE - (. - __boot_pgdir) # pad to PGSIZE    # 页目录表至少占用4KB(PGSIZE),所以将其填充满
 # # 注意:由于表项中的内容都是物理地址,而__boot_pgdir、__boot_pt1都是虚拟地址,所以需要REALLOC来计算物理地址!!
 
-# __boot_pt1是第一个页表(二级页表) => 共4KB; 一个页表项对应一个页=>所以共映射了1024*4KB=4MB
+# __boot_pt1是第一个页表(二级页表) => 共4KB/1024项目,它映射的物理地址为0~4MB; 
+# 一个页表项对应一个页=>所以共映射了1024*4KB=4MB
 # 一个页表项占4B,32bit;实际上只有高20位用于索引页号(高10位PDX、中间10位PTX),低12位可利用来作为标记;
 # 页表项的低12bit可用于标记该页的一些属性、权限等,详见mmu.h => 必看!!!
 .set i, 0

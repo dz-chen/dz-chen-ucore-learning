@@ -6,6 +6,7 @@
 #include <memlayout.h>
 #include <atomic.h>
 #include <assert.h>
+#include <stdio.h>
 
 // pmm_manager is a physical memory management class. A special pmm manager - XXX_pmm_manager
 // only needs to implement the methods in pmm_manager class, then XXX_pmm_manager can be used
@@ -92,8 +93,7 @@ static inline uintptr_t page2pa(struct Page *page) {
 }
 
 // 输入物理地址,返回Page结构体指针
-static inline struct Page *
-pa2page(uintptr_t pa) {
+static inline struct Page *pa2page(uintptr_t pa) {
     if (PPN(pa) >= npage) {
         panic("pa2page called with invalid pa");
     }

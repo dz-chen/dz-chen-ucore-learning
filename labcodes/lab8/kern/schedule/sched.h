@@ -9,7 +9,7 @@
 
 struct proc_struct;
 
-// 定时器结点(的定义) => 一个定时器对应一个被阻塞的线程
+// 定时器结点(的定义) => 一个定时器对应一个被阻塞的线程(准确说是主动睡眠的线程)
 typedef struct {
     unsigned int expires;       //the expire time
     struct proc_struct *proc;   //the proc wait in this timer. If the expire time is end, then this proc will be scheduled
@@ -66,6 +66,7 @@ struct run_queue {
     int max_time_slice;                 // 时间片
     // For LAB6 ONLY
     skew_heap_entry_t *lab6_run_pool;  // 类似于run_list,只是这里就绪队列被组织成优先队列,供stride算法使用!
+                                        // 且此字段对应的总是stride值最小的线程(因为使用了斜堆...)
 };
 
 void sched_init(void);

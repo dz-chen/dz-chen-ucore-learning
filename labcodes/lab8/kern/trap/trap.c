@@ -19,6 +19,17 @@
 
 #define TICK_NUM 100
 
+/***********************************************************************************************
+ *                                      中断相关代码
+ * .中断相关函数的调用顺序
+ *      trap => trap_dispatch => (pgfault_handler/syscall ...)
+ *      pgfault_handler => do_pgfault
+ * 
+ * 
+ * 
+ * *********************************************************************************************/
+
+
 static void print_ticks() {
     cprintf("%d ticks\n",TICK_NUM);
 #ifdef DEBUG_GRADE
@@ -41,7 +52,12 @@ static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt     // 限长,基址
 };
 
-/* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
+/**
+ * idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S 
+ * 初始化中断描述符表IDT
+ * 发生中断后:查找idtr => 查找IDT => 跳转到vectors[i]的入口地址 => 压栈中断号 => 跳转到__alltraps并构造trapframe
+ * => 调用trap()函数...
+ **/
 void idt_init(void) {
     /* LAB1 YOUR CODE : STEP 2 */
     /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
@@ -55,23 +71,24 @@ void idt_init(void) {
     *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
     *     Notice: the argument of lidt is idt_pd. try to find it!
     */
+    /* LAB5 YOUR CODE */ 
+    //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
+    //so you should setup the syscall interrupt gate in here
+    
     extern uintptr_t __vectors[];   //每个中断服务例程的入口地址(相对于段基址的偏移)
-    for(int i=0;i<156;i++){
+    for(int i=0;i<256;i++){
         int istrap=0;               // 不是陷阱(是中断,陷阱不会关中断,从而导致中断嵌套; 除此之外无区别)
         int sel=GD_KTEXT;           // 段选择子(内核代码段)
         int off=__vectors[i];       // 中断服务程序的地址偏移
         int dpl=DPL_KERNEL;         // 系统调用中断T_SYSCALL使用特权级3(之后会有特权切换); 其他全为0
         SETGATE(idt[i],istrap,sel,off,dpl);
     }
-    // 对于系统调用,需要切换到内核态; 它的权限为ring3; 这里使用中断号121
-    SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+    
+    // 对于系统调用,需要切换到内核态; 它的权限为ring3;
+    SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);  // DPL_USER表示允许在用户态产生这个中断
     
     lidt(&idt_pd);                 // 加载IDT的基址和限长到IDTR
 
-
-    /* LAB5 YOUR CODE */ 
-    //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
-    //so you should setup the syscall interrupt gate in here
 }
 
 
@@ -182,8 +199,7 @@ print_pgfault(struct trapframe *tf) {
             (tf->tf_err & 1) ? "protection fault" : "no page found");
 }
 
-static int
-pgfault_handler(struct trapframe *tf) {
+static int pgfault_handler(struct trapframe *tf) {
     extern struct mm_struct *check_mm_struct;
     if(check_mm_struct !=NULL) { //used for test check_swap
             print_pgfault(tf);
@@ -212,7 +228,6 @@ static void trap_dispatch(struct trapframe *tf) {
     char c;
 
     int ret=0;
-
     switch (tf->tf_trapno) {
         case T_PGFLT:  //page fault
             if ((ret = pgfault_handler(tf)) != 0) {
@@ -234,7 +249,7 @@ static void trap_dispatch(struct trapframe *tf) {
             // 注:ucore的所有系统调用共享一个中断号(0x80),进入内核后再根据调用的函数编号分发到处理函数
             syscall();                  // 见syscall/syscall.c
             break;
-        case IRQ_OFFSET + IRQ_TIMER:
+        case IRQ_OFFSET + IRQ_TIMER:    // 如果是时钟中断
             #if 0
                 LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
                 then you can add code here. 
@@ -245,11 +260,6 @@ static void trap_dispatch(struct trapframe *tf) {
                 * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
                 * (3) Too Simple? Yes, I think so!
                 */
-                ticks++;
-                if(ticks%TICK_NUM==0)
-                    print_ticks();
-                
-
                 /* LAB5 YOUR CODE */
                 /* you should upate you lab1 code (just add ONE or TWO lines of code):
                 *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
@@ -264,6 +274,14 @@ static void trap_dispatch(struct trapframe *tf) {
                 * IMPORTANT FUNCTIONS:
                 * run_timer_list
                 */
+                ticks++;
+                // if(ticks%TICK_NUM==0){
+                //     print_ticks();
+                //     current->need_resched=1;
+                // }
+                //sched_class_proc_tick();
+                run_timer_list();    
+                
                 break;
         case IRQ_OFFSET + IRQ_COM1:
         case IRQ_OFFSET + IRQ_KBD:
@@ -291,7 +309,6 @@ static void trap_dispatch(struct trapframe *tf) {
             }
             // in kernel, it must be a mistake
             panic("unexpected trap in kernel.\n");
-
     }
 }
 
@@ -310,14 +327,14 @@ void trap(struct trapframe *tf) {
     }
     else {
         // keep a trapframe chain in stack
-        struct trapframe *otf = current->tf;
+        struct trapframe *otf = current->tf;   // 为什么要保存原来的中断上下文 => 因为可能中断嵌套...
         current->tf = tf;
     
         bool in_kernel = trap_in_kernel(tf);
     
         trap_dispatch(tf);
     
-        current->tf = otf;
+        current->tf = otf;                     // 处理完了当前中断,上一个中断的上下文
 
         // 如果中断是在用户态发生的
         if (!in_kernel) {
@@ -329,7 +346,8 @@ void trap(struct trapframe *tf) {
             }
         }
 
-        // 在内核发生,不会重新调度 => 体现了内核的不可抢占性 
+        // 在内核发生,不会重新调度 => 体现了内核的不可抢占性
+        // 只是没有切换线程,但是不代表控制流没有改变,因为需要先处理对应的中断,也就是说认为是当前线程处理的中断...
     }
 }
 

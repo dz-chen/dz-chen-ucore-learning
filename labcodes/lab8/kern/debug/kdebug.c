@@ -141,8 +141,7 @@ stab_binsearch(const struct stab *stabs, int *region_left, int *region_right,
  * was found, and negative if not.  But even if it returns negative it
  * has stored some information into '*info'.
  * */
-int
-debuginfo_eip(uintptr_t addr, struct eipdebuginfo *info) {
+int debuginfo_eip(uintptr_t addr, struct eipdebuginfo *info) {
     const struct stab *stabs, *stab_end;
     const char *stabstr, *stabstr_end;
 
@@ -271,8 +270,7 @@ debuginfo_eip(uintptr_t addr, struct eipdebuginfo *info) {
  * of kernel entry, the start addresses of data and text segements, the start
  * address of free memory and how many memory that kernel has used.
  * */
-void
-print_kerninfo(void) {
+void print_kerninfo(void) {
     extern char etext[], edata[], end[], kern_init[];
     cprintf("Special kernel symbols:\n");
     cprintf("  entry  0x%08x (phys)\n", kern_init);    // 内核入口地址
@@ -282,13 +280,12 @@ print_kerninfo(void) {
     cprintf("Kernel executable memory footprint: %dKB\n", (end - kern_init + 1023)/1024); //内核的内存大小
 }
 
-/* *
+/**
  * print_debuginfo - read and print the stat information for the address @eip,
  * and info.eip_fn_addr should be the first address of the related function.
  * 打印文件名、行号、函数名、等
- * */
-void
-print_debuginfo(uintptr_t eip) {
+ **/
+void print_debuginfo(uintptr_t eip) {
     struct eipdebuginfo info;
     if (debuginfo_eip(eip, &info) != 0) {
         cprintf("    <unknow>: -- 0x%08x --\n", eip);
@@ -345,8 +342,7 @@ static __noinline uint32_t read_eip(void) {
  * Note that, the length of ebp-chain is limited. In boot/bootasm.S, before jumping
  * to the kernel entry, the value of ebp has been set to zero, that's the boundary.
  * */
-void
-print_stackframe(void) {
+void print_stackframe(void) {
     /* LAB1 YOUR CODE : STEP 1 */
     /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
     * (2) call read_eip() to get the value of eip. the type is (uint32_t);
@@ -366,7 +362,7 @@ print_stackframe(void) {
     uint32_t eip=read_eip();
     for(int i=0;i<STACKFRAME_DEPTH;i++){
         if(ebp==0){                      // bootasm.S中设置ebp为0; 若到此处,说明到达栈底,应退出
-            cprintf("now stack is at bottom:ebp==0!\n");
+            //cprintf("now stack is at bottom:ebp==0!\n");
             break;
         }                
         cprintf("ebp:0x%08x eip:0x%08x ",ebp,eip);

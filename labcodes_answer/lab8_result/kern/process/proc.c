@@ -959,11 +959,14 @@ kernel_execve(const char *name, const char **argv) {
     while (argv[argc] != NULL) {
         argc ++;
     }
+    //cprintf("------------------------------ test by cdz,begin sys_call in kernel to create user thread!\n");
     asm volatile (
         "int %1;"
         : "=a" (ret)
         : "i" (T_SYSCALL), "0" (SYS_exec), "d" (name), "c" (argc), "b" (argv)
         : "memory");
+    //cprintf("------------------------------ test by cdz,end sys_call in kernel to create user thread!\n");
+
     return ret;
 }
 
@@ -985,16 +988,19 @@ const char *argv[] = {path, ##__VA_ARGS__, NULL};       \
 // user_main - kernel thread used to exec a user program
 static int
 user_main(void *arg) {
-#ifdef TEST
-#ifdef TESTSCRIPT
-    KERNEL_EXECVE3(TEST, TESTSCRIPT);
-#else
-    KERNEL_EXECVE2(TEST);
-#endif
-#else
-    KERNEL_EXECVE(sh);
-#endif
-    panic("user_main execve failed.\n");
+    #ifdef TEST
+        #ifdef TESTSCRIPT
+            //cprintf("------------------------------ test by cdz, define TESTSCRIPT in user_main\n");
+            KERNEL_EXECVE3(TEST, TESTSCRIPT);
+        #else
+            //cprintf("------------------------------ test by cdz,not define TESTSCRIPT in user_main\n");
+            KERNEL_EXECVE2(TEST);
+        #endif
+    #else
+        //cprintf("------------------------------ test by cdz,not define TEST in user_main\n");
+        KERNEL_EXECVE(sh);
+    #endif
+        panic("user_main execve failed.\n");
 }
 
 // init_main - the second kernel thread used to create user_main kernel threads

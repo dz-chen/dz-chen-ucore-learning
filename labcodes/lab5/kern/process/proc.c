@@ -873,8 +873,8 @@ static int kernel_execve(const char *name, unsigned char *binary, size_t size) {
 
 // user_main - kernel thread used to exec a user program
 static int user_main(void *arg) {
-#ifdef TEST
-    KERNEL_EXECVE2(TEST, TESTSTART, TESTSIZE);  // 最终调用kernel_execve函数
+#ifdef TEST  // 定义在makefile中
+    KERNEL_EXECVE2(TEST, TESTSTART, TESTSIZE);  // 最终调用kernel_execve函数,会加载hello程序到用户空间...
 #else
     KERNEL_EXECVE(exit);
 #endif

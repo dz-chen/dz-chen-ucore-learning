@@ -9,7 +9,12 @@
 
 /**************************************************************
  *              内核级信号量及其操作P/V
+ * 
  * .ucore中信号量的实现,需要基于开/关中断机制
+ * .开关中断只是提供原子操作的底层技术之一 
+ *      => 共三类:开关中断、原子操作如ts和cas、软件方式
+ * .信号量、锁、条件变量则是并发编程的中间层抽象
+ * .最高层则是临界区、管程
  * ************************************************************/
 
 
@@ -23,7 +28,7 @@ void sem_init(semaphore_t *sem, int value) {
 // P操作的具体实现(wait_state表示被阻塞的原因)
 static __noinline uint32_t __down(semaphore_t *sem, uint32_t wait_state) {
     bool intr_flag;
-    local_intr_save(intr_flag);         // 关中断
+    local_intr_save(intr_flag);         // 关中断,从而没有上下文切换,也就是说cpu接下来将只执行当前线程的代码,不会执行其他线程的代码！
     if (sem->value > 0) {               // val>0 说明可获得资源,于是val减1然后退出,不用阻塞当前线程
         sem->value --;
         local_intr_restore(intr_flag);  // 开中断

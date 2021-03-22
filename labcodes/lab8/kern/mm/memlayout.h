@@ -6,9 +6,9 @@
 /* global segment number
  * 对比bootasm.S中gdt的初始化
  */
-#define SEG_KTEXT   1                       // 段选择子(编号);每个编号的段描述符在GDT中占8字节
+#define SEG_KTEXT   1                       // 内核段选择子(编号);每个编号的段描述符在GDT中占8字节
 #define SEG_KDATA   2
-#define SEG_UTEXT   3
+#define SEG_UTEXT   3                       // 用户代码段选择子(编号)
 #define SEG_UDATA   4
 #define SEG_TSS     5
 
@@ -36,7 +36,7 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE:4096*1024,内核页表
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE:4096*1024,内核页表(其中包含了页目录表,它是第1003个)
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
@@ -85,12 +85,12 @@
 #define KSTACKPAGE          2                           // # of pages in kernel stack
 #define KSTACKSIZE          (KSTACKPAGE * PGSIZE)       // sizeof kernel stack
 
-#define USERTOP             0xB0000000
-#define USTACKTOP           USERTOP
+#define USERTOP             0xB0000000                  // 用户态程序的最高虚拟地址
+#define USTACKTOP           USERTOP                     // 用户栈的顶部,就在用户程序的最高虚拟地址
 #define USTACKPAGE          256                         // # of pages in user stack
 #define USTACKSIZE          (USTACKPAGE * PGSIZE)       // sizeof user stack
 
-#define USERBASE            0x00200000
+#define USERBASE            0x00200000                  // 用户态程序的最低虚拟地址
 #define UTEXT               0x00800000                  // where user programs generally begin
 #define USTAB               USERBASE                    // the location of the user STABS data structure
 
@@ -118,9 +118,9 @@ typedef pte_t swap_entry_t; //the pte can also be a swap entry
 #define E820_ARR            2       // address range reserved
 
 /**
- * 结构体e820map描述符了物理内存的信息
- * 在bootloader中通过BIOS探测物理内存,并将其按照emap820格式存放到固定位置(0x8000处),之后由os使用
- * 探测过程见bootasm.S
+ * 结构体e820map描述符了物理内存的信息;
+ * 在bootloader中通过BIOS探测物理内存,并将其按照emap820格式存放到固定位置(0x8000处),之后由os使用;
+ * 探测过程见bootasm.S;
  * **/
 struct e820map {
     int nr_map;          // 总的有多少个物理内存区域 => map[0]、map[1]....map[nr_map-1],最多E820MAX个
@@ -191,7 +191,7 @@ struct Page {
 
 /**
  * free_area_t - maintains a doubly linked list to record free (unused) pages 
- * 描述空闲链表的数据结构
+ * 描述空闲链表的数据结构(物理内存!)
  * - free_list:第一个空闲区域(链表项)
  * - nr_free:链表中总共的空闲页数
  * */

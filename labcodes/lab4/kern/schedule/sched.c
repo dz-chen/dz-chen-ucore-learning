@@ -33,9 +33,11 @@ schedule(void) {
         }
         next->runs ++;
         if (next != current) {
+
             proc_run(next);
         }
     }
     local_intr_restore(intr_flag);
 }
+
 

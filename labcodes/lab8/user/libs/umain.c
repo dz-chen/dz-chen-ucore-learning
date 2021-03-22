@@ -5,8 +5,7 @@
 
 int main(int argc, char *argv[]);
 
-static int
-initfd(int fd2, const char *path, uint32_t open_flags) {
+static int initfd(int fd2, const char *path, uint32_t open_flags) {
     int fd1, ret;
     if ((fd1 = open(path, open_flags)) < 0) {
         return fd1;
@@ -19,8 +18,11 @@ initfd(int fd2, const char *path, uint32_t open_flags) {
     return ret;
 }
 
-void
-umain(int argc, char *argv[]) {
+/**
+ * 所有应用程序执行的第一个c函数
+ * 它将调用应用程序的main函数,并在main函数结束后调用exit函数,exit再通过系统调用sys_exit回收线程资源!
+ **/
+void umain(int argc, char *argv[]) {
     int fd;
     if ((fd = initfd(0, "stdin:", O_RDONLY)) < 0) {
         warn("open <stdin> failed: %e.\n", fd);

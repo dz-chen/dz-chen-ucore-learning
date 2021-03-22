@@ -6,6 +6,10 @@
 #include <string.h>
 #include <lock.h>
 
+/************************************************************************************************
+ *                                用户态对系统调用的包装
+ * .这些函数是通过调用syscall.c下的函数实现
+ ************************************************************************************************/
 static lock_t fork_lock = INIT_LOCK;
 
 void
@@ -77,8 +81,14 @@ gettime_msec(void) {
     return (unsigned int)sys_gettime();
 }
 
-int
-__exec(const char *name, const char **argv) {
+
+/**
+ * 创建新线程
+ * - name:线程名(可以为null)
+ * - argv:参数(包括程序路径)
+ *  => 通过系统调用sys_exec实现
+ */ 
+int __exec(const char *name, const char **argv) {
     int argc = 0;
     while (argv[argc] != NULL) {
         argc ++;

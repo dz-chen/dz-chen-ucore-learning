@@ -1,7 +1,7 @@
 #ifndef __LIBS_UNISTD_H__
 #define __LIBS_UNISTD_H__
 
-#define T_SYSCALL           0x80    
+#define T_SYSCALL           0x80        // 系统调用的中断号
 
 /* syscall number */
 #define SYS_exit            1
@@ -33,9 +33,9 @@
 #define SYS_lab6_set_priority 255
 
 /* SYS_fork flags */
-#define CLONE_VM            0x00000100  // set if VM shared between processes
+#define CLONE_VM            0x00000100  // set if VM shared between processes => 父子线程共享需内存
 #define CLONE_THREAD        0x00000200  // thread group
-#define CLONE_FS            0x00000800  // set if shared between processes
+#define CLONE_FS            0x00000800  // set if shared between processes => 父子线程共享文件控制块
 
 /* VFS flags */
 // flags for open: choose one of these

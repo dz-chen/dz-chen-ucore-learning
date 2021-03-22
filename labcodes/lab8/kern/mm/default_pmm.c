@@ -110,7 +110,7 @@ free_area_t free_area;
 
 // 初始化空闲链表
 static void default_init(void) {
-    list_init(&free_list);                  // 初始化空闲链表结点; free_list是一个空节点(它与链表上其他节点不同)
+    list_init(&free_list);      // 初始化空闲链表结点; free_list是一个空节点(它与链表上其他节点不同)
     nr_free = 0;
 }
 
@@ -138,7 +138,7 @@ static void default_init_memmap(struct Page *base, size_t n) {
 /****
  * 分配n个物理页
  * 返回分配的区域的第一个page指针
- * 注:返回的不是区域的首地址,而是该区域第一个page的描述结构的地址
+ * 注:返回的不是区域的首地址,而是该区域第一个page的描述结构的地址/指针
  * **/
 static struct Page *default_alloc_pages(size_t n) {
     if(n>nr_free) return NULL;
@@ -273,8 +273,7 @@ static void basic_check(void) {
 
 // LAB2: below code is used to check the first fit allocation algorithm (your EXERCISE 1) 
 // NOTICE: You SHOULD NOT CHANGE basic_check, default_check functions!
-static void
-default_check(void) {
+static void default_check(void) {
     int count = 0, total = 0;
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {

@@ -32,9 +32,9 @@ long SYSTEM_READ_TIMER( void ){
 /* *
  * clock_init - initialize 8253 clock to interrupt 100 times per second,
  * and then enable IRQ_TIMER.
+ * 初始化时钟中断
  * */
-void
-clock_init(void) {
+void clock_init(void) {
     // set 8253 timer-chip
     outb(TIMER_MODE, TIMER_SEL0 | TIMER_RATEGEN | TIMER_16BIT);
     // 设置时钟每秒中断100次

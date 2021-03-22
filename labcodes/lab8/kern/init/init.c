@@ -34,13 +34,14 @@ int kern_init(void) {
 
     grade_backtrace();          // 显示堆栈信息,最终调用print_stackframe()
 
+
     pmm_init();                 // 初始化物理内存管理(=> 从调用pmm_init开始,进入地址映射的第三个阶段)
 
     pic_init();                 // 初始化中断控制器(8259A),programable interupt controller
     
     idt_init();                 // 初始化IDT(对比GDT的初始化,在bootasm.S)
 
-    vmm_init();                 // 初始化虚拟内存管理
+    vmm_init();                 // 初始化虚拟内存管理(主要是检查相关数据结构及函数是否正常)
 
     sched_init();               // 初始化调度器
 
@@ -48,7 +49,7 @@ int kern_init(void) {
 
     ide_init();                 // 初始化IDE设备
 
-    swap_init();                // 初始化swap分区 => 物理内存的页面置换(fifo)在这个组件中实现
+    swap_init();                // 初始化swap分区 => 物理内存的页面置换(fifo)在这个组件中实现;检验swap算法
 
     fs_init();                  // 初始化文件系统
     
@@ -60,7 +61,8 @@ int kern_init(void) {
     // user/kernel mode switch test
     //lab1_switch_test();
     
-    cpu_idle();                 // run idle process
+    // 前面仅仅创建了线程(但是真正执行的只有idleproc),这里才开始调度...
+    cpu_idle();                 // 它属于idleproc线程,它的任务就是线程调度 => 选择其他合适的线程投入运行..
 }
 
 void __attribute__((noinline))

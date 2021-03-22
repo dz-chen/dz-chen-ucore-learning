@@ -36,11 +36,11 @@ struct vma_struct {
  * the control struct for a set of vma using the same PDT
  *                 memory manage struct
  * 1.是进程/线程控制块task_struct的成员,负责管理当前进程的虚拟内存空间
- * 2.所谓"using the same PDT"是因为进程有自己的页表(及页目录表),每个进程的虚拟地址空间使用该进程的页表而不是内核的页表
+ * 2.进程有自己的页表(及页目录表),每个进程的虚拟地址空间使用该进程的页表而不是内核的页表
  * 3.为了实现多线程,一个mm_struct对应一个进程,但是它被多个线程共享(见mm_count)！
  * */
 struct mm_struct {
-    list_entry_t mmap_list;        // 链表(它是链表头结点,不含数据) => 链接mm_struct管理的所有vma(链表按照各区域的起始va排序)
+    list_entry_t mmap_list;        // 链表(它是链表头结点,不含数据) => 链接mm_struct管理的所有vma_struct(链表按照各区域的起始va排序)
     struct vma_struct *mmap_cache; // 指向当前正在使用的vma_struct(即段)
                                    // 由于局部性原理,当前正在使用的虚拟地址空间接下来可能还会使用,这时就不需要查链表,而是直接使用这个指针.从而加快查询速度
     pde_t *pgdir;                  // mm_struct维护的页目录表(每个进程不一样 => 所有内线程共享boot_pgdir; 一个用户进程内的所以线程共享一个相同的pgdir)
@@ -48,8 +48,8 @@ struct mm_struct {
     void *sm_priv;                 // the private data for swap manager/就是页面置换的FIFO队列
                                    //  => 就是页面置换的FIFO队列(从而建立了mm_struct和swap_mmanager之间的联系,见swap_fifo.c)
                                    // 见swap_fifo.c下的_fifo_init_mm函数
-    int mm_count;                  // the number of process which shared the mm
-    semaphore_t mm_sem;            // mutex for using dup_mmap fun to duplicat the mm 
+    int mm_count;                  // the number of process which shared the mm => 线程数,进程内的多个线程共享一个mm_struct
+    semaphore_t mm_sem;            // 用于保证对mm_strcut的互斥访问,详见lock_mm、unlock_mm 
     int locked_by;                 // the lock owner process's pid
 };
 
@@ -79,8 +79,11 @@ bool copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len
 bool copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len);
 bool copy_string(struct mm_struct *mm, char *dst, const char *src, size_t maxn);
 
-static inline int
-mm_count(struct mm_struct *mm) {
+
+/**
+ * 返回共享此mm_struct的线程个数
+ **/  
+static inline int mm_count(struct mm_struct *mm) {
     return mm->mm_count;
 }
 
@@ -92,19 +95,27 @@ static inline void set_mm_count(struct mm_struct *mm, int val) {
     mm->mm_count = val;
 }
 
-static inline int
-mm_count_inc(struct mm_struct *mm) {
+
+// 共享mm的线程数+1
+static inline int mm_count_inc(struct mm_struct *mm) {
     mm->mm_count += 1;
     return mm->mm_count;
 }
 
-static inline int
-mm_count_dec(struct mm_struct *mm) {
+
+// 共享mm_struct的线程数-1
+static inline int mm_count_dec(struct mm_struct *mm) {
     mm->mm_count -= 1;
     return mm->mm_count;
 }
 
 
+/**
+ * 尝试获取mm_struct上的锁
+ * 如果获取成功,则当前线程对mm有独占权
+ * 如果获取失败,则当前线程被阻塞
+ * => 通过mm_struct上的信号量mm_sem实现锁,这本质就是P操作
+ **/ 
 static inline void lock_mm(struct mm_struct *mm) {
     if (mm != NULL) {
         down(&(mm->mm_sem));
@@ -114,8 +125,12 @@ static inline void lock_mm(struct mm_struct *mm) {
     }
 }
 
-static inline void
-unlock_mm(struct mm_struct *mm) {
+
+/**
+ * 释放mm_struct上的锁...
+ * 就是对mm_struct上的信号量mm_sem做V操作
+ */ 
+static inline void unlock_mm(struct mm_struct *mm) {
     if (mm != NULL) {
         up(&(mm->mm_sem));
         mm->locked_by = 0;

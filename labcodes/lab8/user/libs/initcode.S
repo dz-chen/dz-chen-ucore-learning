@@ -1,3 +1,4 @@
+# _start是所有应用程序的起始用户态执行地址,它最终调用umain函数
 .text
 .globl _start
 _start:
@@ -18,7 +19,7 @@ _start:
     pushl %ebx
 
     # call user-program function
-    call umain
+    call umain             # 见umain.c
 1:  jmp 1b
 
     

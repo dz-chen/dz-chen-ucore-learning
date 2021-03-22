@@ -174,8 +174,11 @@ lcr0(uintptr_t cr0) {
     asm volatile ("mov %0, %%cr0" :: "r" (cr0) : "memory");
 }
 
-static inline void
-lcr3(uintptr_t cr3) {
+/**
+ * 将cr3寄存器设置为cr3
+ * 这就是将页目录表的物理地址加载到cr3寄存器中
+ */ 
+static inline void lcr3(uintptr_t cr3) {
     asm volatile ("mov %0, %%cr3" :: "r" (cr3) : "memory");
 }
 

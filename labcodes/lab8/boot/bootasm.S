@@ -17,7 +17,7 @@
 # with %cs=0 %ip=7c00.
 
 # .set汇编伪指令,这里相当于设置变量
-.set PROT_MODE_CSEG,        0x8                     # kernel code segment selector => GDT中,代码段描述符的偏移
+.set PROT_MODE_CSEG,        0x8                     # kernel code segment selector => GDT中,代码段描述符的偏移 => 内核代码段对应GDT的第1(从0编号)个的segment,每个描述符表项占8字节=> 0x8
 .set PROT_MODE_DSEG,        0x10                    # kernel data segment selector => 数据段描述符的偏移
 .set CR0_PE_ON,             0x1                     # protected mode enable flag
 .set SMAP,                  0x534d4150
@@ -31,7 +31,7 @@ start:
     cli                                             # Disable interrupts => 关中断
     cld                                             # 将标志寄存器flag的方向标志位DF清零(方便打开A20时判断DF)
 
-    # Set up the important data segment registers (DS, ES, SS). 设置段寄存器
+    # Set up the important data segment registers (DS, ES, SS). 设置段寄存器(全部置0)
     xorw %ax, %ax                                   # Segment number zero => 自身xor,从而置零
     movw %ax, %ds                                   # -> Data Segment     => 数据段
     movw %ax, %es                                   # -> Extra Segment    => 附加段
@@ -61,7 +61,7 @@ seta20.2:
     # 向0x64发送0xd1命令后,这里才开始真正执行写Output Port
     # (猜测)发送0xd1后,输出缓冲0x60中应该有Output Port的数据,
     #       然后从0x60读取该数据,修改并再次写入0x60,这个修改后的值自动更新到Output Port,从而完成对内部端口的写
-    # 只是这里直接向0x60写入固定值0xfd,没有理会Output Port中原本的值; 这个固定值的bit1 为1,意味着打开A20
+    # 只是这里直接向0x60写入固定值0xdf,没有理会Output Port中原本的值; 这个固定值的bit1 为1,意味着打开A20
     movb $0xdf, %al                                 # 0xdf -> port 0x60
     outb %al, $0x60                                 # 0xdf = 11011111, means set P2's A20 bit(the 1 bit) to 1
 
@@ -82,7 +82,7 @@ start_probe:
     jmp finish_probe
 cont:
     addw $20, %di           # 设置下一个BIOS返回的映射地址描述符的起始地址(0x8000+20,因为一个map[i]占20字节)
-    incl 0x8000             # 递增struct e820map的成员变量nr_map
+    incl 0x8000             # 递增struct e820map的成员变量nr_map(它位于0x8000处)
     cmpl $0, %ebx           # 如果INT0x15返回的ebx为零,表示探测结束,否则继续探测
     jnz start_probe
 finish_probe:
@@ -103,7 +103,7 @@ finish_probe:
     # Jump to next instruction, but in 32-bit code segment.
     # Switches processor into 32-bit mode.
     # 设置好保护模式后,下一条指令应该是32位保护模式的计算方式(CS寄存器的隐形部分+EIP)
-    # => 所以这条指令会将CS寄存器设置为PROT_MODE_CSEG(然后将对应的基址读取到CS不可见部分);   EIP设置为protcseg
+    # => 所以这条指令会将CS寄存器设置为PROT_MODE_CSEG(从而自动将对应的基址读取到CS不可见部分);   EIP设置为protcseg
     ljmp $PROT_MODE_CSEG, $protcseg    #  格式:ljmp 段选择子,段内偏移 => ljmp 0x8,protcseg
 
 .code32                                             # Assemble for 32-bit mode
@@ -131,7 +131,7 @@ spin:
 # 伪指令,指定对齐方式(2^2=4 字节对齐)
 .p2align 2                                          # force 4 byte alignment
 
-# 初始化GDT,每个表项占64位,目前gdt仅占24字节
+# 初始化GDT,每个表项占64位,目前gdt仅占24字节(3x8=24)
 # SEG_NULLASM、SEG_ASM见asm.h
 gdt:
     SEG_NULLASM                                     # 第一个段描述符固定为空!

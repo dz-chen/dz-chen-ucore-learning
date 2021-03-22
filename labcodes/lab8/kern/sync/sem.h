@@ -5,6 +5,9 @@
 #include <atomic.h>
 #include <wait.h>
 
+/**
+ * 信号量数据结构
+ **/
 typedef struct {
     int value;                  // 信号量的当前值:可用资源数
     wait_queue_t wait_queue;    // 该信号量对应的等待队列

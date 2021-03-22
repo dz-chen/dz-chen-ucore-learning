@@ -43,7 +43,7 @@ static void check_swap(void);
 /**
  *        初始化swap(被kern_init调用)
  * 1.初始化文件系统中的swap分区=> swapfs_init()
- * 2.完成页面置换管理器的初始化(对于FIFO而言,就是初始化队列)
+ * 2.完成页面置换管理器的初始化(对于FIFO而言,就是初始化队列) => sm = &swap_manager_fifo;
  */ 
 int swap_init(void)
 {

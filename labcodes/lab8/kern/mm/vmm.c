@@ -9,6 +9,15 @@
 #include <swap.h>
 #include <kmalloc.h>
 
+/**********************************************************************************************
+ *                                   虚拟内存管理
+ * .一些关键函数
+ *      vmm_init() => 检查mm_struct、vma_struct数据结构是否正常;检查do_pgfault是否正常
+ *      do_pgfault() => 处理页故障(注意有哪三类页故障)
+ * 
+ * 
+ * *******************************************************************************************/
+
 /* 
   vmm design include two parts: mm_struct (mm) & vma_struct (vma)
   mm is the memory manager for the set of continuous virtual memory  
@@ -68,7 +77,7 @@ struct mm_struct *mm_create(void) {
 /**
  * vma_create - alloc a vma_struct & initialize it. (addr range: vm_start~vm_end)
  * 动态分配一个vma_struct,并用参数vm_start、vm_end等对其初始化
- * 返回分配的堆上内存指针
+ * 返回分配的堆上内存指针(不过这里是从内核中分配的..)
  * */
 struct vma_struct *vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags) {
     struct vma_struct *vma = kmalloc(sizeof(struct vma_struct));
@@ -177,7 +186,8 @@ void mm_destroy(struct mm_struct *mm) {
 }
 
 /**
- * 为虚拟地址addr开始,长度为len字节的虚拟段创建vma结构,将其加入到mm中
+ * 为虚拟地址addr开始,长度为len字节的虚拟段创建vma结构,将其加入到mm中;
+ * 在proc.c中,被load_icode调用
  */ 
 int mm_map(struct mm_struct *mm, uintptr_t addr, size_t len, uint32_t vm_flags,
        struct vma_struct **vma_store) {
@@ -209,11 +219,18 @@ out:
     return ret;
 }
 
-int
-dup_mmap(struct mm_struct *to, struct mm_struct *from) {
+/**
+ * 将from这个mm_struct复制给to这个mm_struct
+ * 注意:
+ * 1.不能直接memcpy(),因为涉及很多链表的问题..
+ * 2.对copy_range()的调用! => from用户空间的内容拷贝到to用户空间
+ * 只有新旧线程属于不同的进程才会调用dup_mm...
+ */ 
+int dup_mmap(struct mm_struct *to, struct mm_struct *from) {
     assert(to != NULL && from != NULL);
-    list_entry_t *list = &(from->mmap_list), *le = list;
+    list_entry_t *list = &(from->mmap_list), *le = list;   // 这个mmap_list连接了所有vma_struct
     while ((le = list_prev(le)) != list) {
+        // 1.复制vma_struct
         struct vma_struct *vma, *nvma;
         vma = le2vma(le, list_link);
         nvma = vma_create(vma->vm_start, vma->vm_end, vma->vm_flags);
@@ -222,7 +239,8 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
         }
 
         insert_vma_struct(to, nvma);
-
+        
+        // 2.复制用户空间的内容
         bool share = 0;
         if (copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share) != 0) {
             return -E_NO_MEM;
@@ -231,22 +249,30 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
     return 0;
 }
 
+
+/**
+ * 回收mm_struct对应的[用户]内存空间
+ * 1.第一次遍历,解除所有vma_struct的地址映射,并回收对应的物理页
+ * 2.第二次遍历,回收所有vma_struct对应的二级页表
+ */ 
 void exit_mmap(struct mm_struct *mm) {
     assert(mm != NULL && mm_count(mm) == 0);
     pde_t *pgdir = mm->pgdir;
     list_entry_t *list = &(mm->mmap_list), *le = list;
+    // 第一次遍历,解除vma_struct对应的地址映射、以及物理页
     while ((le = list_next(le)) != list) {
         struct vma_struct *vma = le2vma(le, list_link);
         unmap_range(pgdir, vma->vm_start, vma->vm_end);
     }
+    // 第二次遍历,回收vma_struct对应的页表
     while ((le = list_next(le)) != list) {
         struct vma_struct *vma = le2vma(le, list_link);
         exit_range(pgdir, vma->vm_start, vma->vm_end);
     }
 }
 
-bool
-copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, bool writable) {
+
+bool copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, bool writable) {
     if (!user_mem_check(mm, (uintptr_t)src, len, writable)) {
         return 0;
     }
@@ -254,8 +280,7 @@ copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, boo
     return 1;
 }
 
-bool
-copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len) {
+bool copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len) {
     if (!user_mem_check(mm, (uintptr_t)dst, len, 1)) {
         return 0;
     }
@@ -273,7 +298,9 @@ void vmm_init(void) {
 // check_vmm - check correctness of vmm
 // 检查虚拟内存管理(测试mm_struct、vma_struct及其相关函数)
 static void check_vmm(void) {
-    size_t nr_free_pages_store = nr_free_pages();      // 剩余的空闲物理内存页数量
+    size_t nr_free_pages_store = nr_free_pages();      // 剩余的空闲物理内存页数量;
+    // 测试大约是31883,仅供内核使用,不过尚未分配使用...
+    
     check_vma_struct();        // 测试mm_struct、vma_struct及其相关函数            
     check_pgfault();
 
@@ -345,7 +372,9 @@ static void check_vma_struct(void) {
 struct mm_struct *check_mm_struct;
 /**
  * check_pgfault - check correctness of pgfault handler
- * 测试代码--检查页故障处理器?? 似乎不是吧?
+ * 测试代码--检查页故障处理器 
+ * => 缺页时自动发生缺页故障,跳转到trap.c中执行相应代码...
+ * 这里是vmm的重点,务必找到缺页的位置,往下分析...
  * */
 static void check_pgfault(void) {
     size_t nr_free_pages_store = nr_free_pages();
@@ -365,6 +394,12 @@ static void check_pgfault(void) {
     uintptr_t addr = 0x100;
     assert(find_vma(mm, addr) == vma);     // 检验0x100是否在刚设置的vma中 
 
+
+    // nr_free_pages() => 此时应该为31882;但是因为缺页异常时,没有二级页表和对应物理页,需要分配两个物理页
+    //                    执行下面for循环后,nr_free_pages()就该变为31880
+    // 在下面的第一个for开始时处发生缺页异常,会转而执行trap()函数
+    //    => 因为虚拟地址0x100(addr+0)在页表中没有对应的映射
+    //       pmm.c中的pmm_init()调用boot_map_segment()时,仅仅给KERNBASE~KERNBASE+KMEMSIZE的虚拟地址映射了物理内存
     int i, sum = 0;
     for (i = 0; i < 100; i ++) {
         *(char *)(addr + i) = i;
@@ -375,13 +410,18 @@ static void check_pgfault(void) {
     }
     assert(sum == 0);
 
-    // 删除addr所在页的地址映射
-    page_remove(pgdir, ROUNDDOWN(addr, PGSIZE));  // addr对应的虚拟地址很小,之前有映射吗???
+    // nr_free_pages() => 此时应该为31880;但是执行page_remove()后,会释放addr对应的物理页
+    //                    所以page_remove(pgdir, ROUNDDOWN(addr, PGSIZE))后;会变成31881
+    // 删除addr对应虚拟页的地址映射(缺页异常时完成的映射...)
+    page_remove(pgdir, ROUNDDOWN(addr, PGSIZE));  
     
-    // 删除的是什么? 为什么可以这样删除?
+    // nr_free_pages() => 此时应该为31881;但是执行free_page()会释放第一个页表的物理页(addr的页表)
+    //                    所以free_page(pde2page(pgdir[0]))后;会变成31882
+    // 删除的是什么? => 释放第一个页表的物理内存
     free_page(pde2page(pgdir[0]));
+    // nr_free_pages()    => 此时应该为31882
     pgdir[0] = 0;
-
+    
     mm->pgdir = NULL;
     mm_destroy(mm);
     check_mm_struct = NULL;
@@ -399,7 +439,7 @@ volatile unsigned int pgfault_num=0;
  *  do_pgfault - interrupt handler to process the page fault execption
  * => 处理页故障,在trap.c中被调用(trap--> trap_dispatch-->pgfault_handler-->do_pgfault)
  * 什么时候发生页故障?
- * 目标页不存在、不满足访问权限、相应的物理页帧在物理内存中
+ * 目标页不存在(未给虚拟地址映射物理地址)、不满足访问权限、相应的物理页帧不再内存(被换到了swap)
  * -mm         : the control struct for a set of vma using the same PDT
  * -error_code : the error code recorded in trapframe->tf_err which is setted by x86 hardware
  * -addr       : the addr which causes a memory access exception, (the contents of the CR2 register)
@@ -443,12 +483,12 @@ int do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     switch (error_code & 3) {  
         default:
                 /* error code flag : default is 3 ( W/R=1, P=1): write, present */
-        case 2: /* error code flag : (W/R=1, P=0): write, not present */  // => 想写页面,但是页面不在内存
+        case 2: /* error code flag : (W/R=1, P=0): write, not present */  // => 想写页面,但是页面不存在(没有给虚拟地址映射物理地址)
             if (!(vma->vm_flags & VM_WRITE)) {  // 如果要访问的虚拟地址不能写
                 cprintf("do_pgfault failed: error code flag = write AND not present, but the addr's vma cannot write\n");
                 goto failed;
             }
-            // else的语义:想写的物理页面不在内存,但是该虚拟地址可以写,则不算错误,后面会继续处理...
+            // else的语义:想写的物理页面不存在(页表中没有映射),但是该虚拟地址可以写,则不算错误,后面会继续处理...
             break;
         case 1: /* error code flag : (W/R=0, P=1): read, present */       // => 想读页面,且页面存在;
             cprintf("do_pgfault failed: error code flag = read AND present\n");
@@ -578,11 +618,13 @@ failed:
 }
 
 
-
-bool
-user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
+/**
+ * 1.对addr~addr+len这段地址进行范围检查 => 是否在用户虚拟地址空间,且在某个vma_struct内
+ * 2.对addr!addr+len这段地址进行权限检查 => 对这段虚拟地址进行的操作是否在vma_struct给的权限范围内
+ */  
+bool user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
     if (mm != NULL) {
-        if (!USER_ACCESS(addr, addr + len)) {
+        if (!USER_ACCESS(addr, addr + len)) {       // 检查这段地址是否在用户虚拟地址空间      
             return 0;
         }
         struct vma_struct *vma;
@@ -606,18 +648,22 @@ user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
     return KERN_ACCESS(addr, addr + len);
 }
 
-bool
-copy_string(struct mm_struct *mm, char *dst, const char *src, size_t maxn) {
+
+/***
+ * 从src开始,复制最多max字节数据到dst
+ **/ 
+bool copy_string(struct mm_struct *mm, char *dst, const char *src, size_t maxn) {
     size_t alen, part = ROUNDDOWN((uintptr_t)src + PGSIZE, PGSIZE) - (uintptr_t)src;
     while (1) {
         if (part > maxn) {
             part = maxn;
         }
+        // 检查src~src+part是否合法
         if (!user_mem_check(mm, (uintptr_t)src, part, 0)) {
             return 0;
         }
         if ((alen = strnlen(src, part)) < part) {
-            memcpy(dst, src, alen + 1);
+            memcpy(dst, src, alen + 1);         // 复制数据
             return 1;
         }
         if (part == maxn) {

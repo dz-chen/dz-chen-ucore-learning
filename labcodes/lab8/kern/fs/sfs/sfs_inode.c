@@ -642,7 +642,7 @@ static int sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, o
     // (1).如果offset没有对齐要R/W的第一个block,需要先将这个block填充满(无论R/W)
     blkoff=offset % SFS_BLKSIZE;      // offset对应最后一个块的块内偏移
     if(blkoff!=0){              
-        size= nblks==0 ?(endpos-offset) : SFS_BLKSIZE;       // 读/写第一个block需要填充的字节数
+        size= (nblks==0) ?(endpos-offset) : (SFS_BLKSIZE-blkoff);   // 读/写第一个block需要填充的字节数
         ret=sfs_bmap_load_nolock(sfs,sin,blkno,&ino);  // 获取文件内索引blkno的磁盘块号ino(在整个文件系统中的编号)
         if(ret!=0) goto out;
 

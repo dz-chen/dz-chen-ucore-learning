@@ -221,6 +221,8 @@ void phi_take_forks_condvar(int i) {
     // 2.线程真正需要执行的代码...
     state_condvar[i]=HUNGRY;                // 哲学家i饥饿
     phi_test_condvar(i);                    // 哲学家i视图获得左右叉子
+    // state_condvar[i]!=EATING 才是真正需要满足的条件,我们定义的条件变量其实只包含队列,不包含条件
+    // 真正的条件需要自己判断!!
     if(state_condvar[i]!=EATING){           // 获取叉子失败,阻塞在该哲学家对应的条件变量上
         cond_wait(&(mtp->cv[i]));
     }
@@ -261,8 +263,8 @@ void phi_put_forks_condvar(int i) {
 
 
 
+// 每一个线程都会执行这部分内容
 int philosopher_using_condvar(void * arg) { /* arg is the No. of philosopher 0~N-1*/
-  
     int i, iter=0;
     i=(int)arg;
     cprintf("I am No.%d philosopher_condvar\n",i);

@@ -79,8 +79,7 @@ sfs_unmount(struct fs *fs) {
  *
  * NOTICE: nouse now.
  */
-static void
-sfs_cleanup(struct fs *fs) {
+static void sfs_cleanup(struct fs *fs) {
     struct sfs_fs *sfs = fsop_info(fs, sfs);
     uint32_t blocks = sfs->super.blocks, unused_blocks = sfs->super.unused_blocks;
     cprintf("sfs: cleanup: '%s' (%d/%d/%d)\n", sfs->super.info,

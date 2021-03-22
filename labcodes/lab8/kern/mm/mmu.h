@@ -111,6 +111,7 @@ struct gatedesc {
     }
 
 /* segment descriptors */
+// 段描述符(GDT/LDT的一个表项,占64bit)
 struct segdesc {
     unsigned sd_lim_15_0 : 16;      // low bits of segment limit
     unsigned sd_base_15_0 : 16;     // low bits of segment base address

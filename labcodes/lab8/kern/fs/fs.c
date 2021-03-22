@@ -7,6 +7,7 @@
 #include <sfs.h>
 #include <inode.h>
 #include <assert.h>
+#include <stdio.h>
 
 /**
  * 初始化文件系统
@@ -27,13 +28,11 @@ lock_files(struct files_struct *filesp) {
     down(&(filesp->files_sem));
 }
 
-void
-unlock_files(struct files_struct *filesp) {
+void unlock_files(struct files_struct *filesp) {
     up(&(filesp->files_sem));
 }
 //Called when a new proc init
-struct files_struct *
-files_create(void) {
+struct files_struct *files_create(void) {
     //cprintf("[files_create]\n");
     static_assert((int)FILES_STRUCT_NENTRY > 128);
     struct files_struct *filesp;
@@ -46,9 +45,9 @@ files_create(void) {
     }
     return filesp;
 }
+
 //Called when a proc exit
-void
-files_destroy(struct files_struct *filesp) {
+void files_destroy(struct files_struct *filesp) {
 //    cprintf("[files_destroy]\n");
     assert(filesp != NULL && files_count(filesp) == 0);
     if (filesp->pwd != NULL) {
@@ -65,8 +64,8 @@ files_destroy(struct files_struct *filesp) {
     kfree(filesp);
 }
 
-void
-files_closeall(struct files_struct *filesp) {
+// 关闭文件控制块内的所有已打开文件
+void files_closeall(struct files_struct *filesp) {
 //    cprintf("[files_closeall]\n");
     assert(filesp != NULL && files_count(filesp) > 0);
     int i;

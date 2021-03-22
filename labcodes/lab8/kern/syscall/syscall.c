@@ -16,31 +16,31 @@
  *                  系统调用的内核态接口
  * **************************************************************************/
 
-static int
-sys_exit(uint32_t arg[]) {
+static int sys_exit(uint32_t arg[]) {
     int error_code = (int)arg[0];
     return do_exit(error_code);
 }
 
-static int
-sys_fork(uint32_t arg[]) {
+static int sys_fork(uint32_t arg[]) {
     struct trapframe *tf = current->tf;
     uintptr_t stack = tf->tf_esp;
     return do_fork(0, stack, tf);
 }
 
-static int
-sys_wait(uint32_t arg[]) {
+static int sys_wait(uint32_t arg[]) {
     int pid = (int)arg[0];
     int *store = (int *)arg[1];
     return do_wait(pid, store);
 }
 
-static int
-sys_exec(uint32_t arg[]) {
-    const char *name = (const char *)arg[0];
-    int argc = (int)arg[1];
-    const char **argv = (const char **)arg[2];
+/**
+ * 创建新线程
+ * 调用do_execve
+ */ 
+static int sys_exec(uint32_t arg[]) {
+    const char *name = (const char *)arg[0];        // 线程名
+    int argc = (int)arg[1];                         // 参数个数
+    const char **argv = (const char **)arg[2];      // 具体参数,argv[0]是程序路径
     return do_execve(name, argc, argv);
 }
 
@@ -168,7 +168,7 @@ static int (*syscalls[])(uint32_t arg[]) = {
     [SYS_fork]              sys_fork,
     [SYS_wait]              sys_wait,
     [SYS_exec]              sys_exec,
-    [SYS_yield]             sys_yield,       // 指定下标10(中断向量号10)对应的处理程序
+    [SYS_yield]             sys_yield,       // 指定下标10(系统调用号为10)对应的处理程序
     [SYS_kill]              sys_kill,
     [SYS_getpid]            sys_getpid,
     [SYS_putc]              sys_putc,

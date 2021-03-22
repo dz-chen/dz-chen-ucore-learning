@@ -6,7 +6,8 @@
 # 在压入必要参数后,所有中断处理函数跳转到统一入口:__alltraps
 # __alltraps定义在 ./trapentry.S
 #
-# 每个vectori,就是中断服务例程i的入口地址(或者说就是一个中断服务例程)!!!
+# 每个vectori,就是中断服务例程i的入口地址!!!
+#     => 即发生中断时,先执行vectori处的压栈操作,然后跳转到统一的中断入口__alltraps
 #
 # .long vector1 的含义 => 将vector1的地址写入__vectors[1]中 
 #     =>即_vectors[]中存储的是中断服务处理程序vectori的入口地址  
@@ -18,10 +19,10 @@
 # 注:这里的栈是内核栈!!!
 
 .text
-.globl __alltraps            
+.globl __alltraps       # __alltraps来自trapentry.S    
 .globl vector0
 vector0:
-  pushl $0              # 压入0
+  pushl $0              # 压入0      => 压入内核栈
   pushl $0              # 压入中断号
   jmp __alltraps
 .globl vector1

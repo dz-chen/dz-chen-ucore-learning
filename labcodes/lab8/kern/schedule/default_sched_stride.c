@@ -70,6 +70,7 @@ static void stride_init(struct run_queue *rq) {
  * 
  * hint: see libs/skew_heap.h for routines of the priority
  * queue structures.
+ * 将线程proc插入就绪队列rq
  */
 static void stride_enqueue(struct run_queue *rq, struct proc_struct *proc) {
      /* LAB6: YOUR CODE 
@@ -95,6 +96,7 @@ static void stride_enqueue(struct run_queue *rq, struct proc_struct *proc) {
  *
  * hint: see libs/skew_heap.h for routines of the priority
  * queue structures.
+ * 从就绪队列rq中删除线程proc
  */
 static void stride_dequeue(struct run_queue *rq, struct proc_struct *proc) {
      /* LAB6: YOUR CODE 
@@ -132,7 +134,7 @@ static struct proc_struct *stride_pick_next(struct run_queue *rq) {
       * (3) return p
       */
      if(rq->lab6_run_pool==NULL) return NULL;
-     struct proc_struct* p=le2proc(rq->lab6_run_pool,lab6_run_pool);
+     struct proc_struct* p=le2proc(rq->lab6_run_pool,lab6_run_pool); // rq的lab6_run_pool字段总是stride最小的线程
      if(p->lab6_priority==0){
           p->lab6_stride+=BIG_STRIDE;
      }
@@ -149,6 +151,8 @@ static struct proc_struct *stride_pick_next(struct run_queue *rq) {
  * denotes the time slices left for current
  * process. proc->need_resched is the flag variable for process
  * switching.
+ * 每一个节拍点,正在执行的线程的时间片-1
+ * 参数proc通常是当前正在执行的线程
  */
 static void stride_proc_tick(struct run_queue *rq, struct proc_struct *proc) {
      /* LAB6: YOUR CODE */

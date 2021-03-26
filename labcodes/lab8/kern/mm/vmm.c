@@ -280,6 +280,10 @@ bool copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len
     return 1;
 }
 
+/**
+ * 将数据从内核空间拷贝到用户空间
+ * fs/sysfile.c/sysfile_read(...)
+ */  
 bool copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len) {
     if (!user_mem_check(mm, (uintptr_t)dst, len, 1)) {
         return 0;

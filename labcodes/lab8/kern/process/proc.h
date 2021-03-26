@@ -64,7 +64,7 @@ struct proc_struct {
     struct context context;                     // 线程上下文(仅用于线程切换)
     struct trapframe *tf;                       // 中断上下文=> 中断发生时,相关寄存器压入内核栈,tf指针就是指向内核栈中该位置...
     uintptr_t cr3;                              // 页目录表的物理地址(cr3寄存器内容) => 进程内多个线程共享
-    uint32_t flags;                             // Process flag
+    uint32_t flags;                             // Process flag => 用于标志是否已经被kill(详见proc.c/do_kill)
     char name[PROC_NAME_LEN + 1];               // 线程名
     list_entry_t list_link;                     // Process link list
     list_entry_t hash_link;                     // 详见proc.h; 它作为hash_list的val(key是pid),方便根据pid直接定位线程控制块

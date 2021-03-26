@@ -60,7 +60,12 @@ sysfile_close(int fd) {
     return file_close(fd);
 }
 
-/* sysfile_read - read file */
+/**
+ * sysfile_read - read file 
+ * 1.首先检测数据是否可读/可写,不满足则直接返回(从这一点来说,它是非阻塞的) => 重要!!!
+ * 2.将数据读取到内核缓冲区
+ * 3.将内核缓冲区数据复制到外设
+ **/
 int
 sysfile_read(int fd, void *base, size_t len) {
     struct mm_struct *mm = current->mm;

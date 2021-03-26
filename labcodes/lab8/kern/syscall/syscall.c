@@ -21,9 +21,14 @@ static int sys_exit(uint32_t arg[]) {
     return do_exit(error_code);
 }
 
+/**
+ * 创建子进程
+ * 注:这里调用do_fork(0, stack, tf); clone_flags为0说明要创建新的mm_struct
+ * => sys_fork或者说是系统调用fork是创建新进程(而不仅仅是线程...)
+ */ 
 static int sys_fork(uint32_t arg[]) {
     struct trapframe *tf = current->tf;
-    uintptr_t stack = tf->tf_esp;
+    uintptr_t stack = tf->tf_esp;        // 陷入内核时,已经将用户线程的栈指针压入了trapframe
     return do_fork(0, stack, tf);
 }
 
@@ -104,8 +109,10 @@ sys_close(uint32_t arg[]) {
     return sysfile_close(fd);
 }
 
-static int
-sys_read(uint32_t arg[]) {
+/**
+ * read 系统调用 => 读文件
+*/
+static int sys_read(uint32_t arg[]) {
     int fd = (int)arg[0];
     void *base = (void *)arg[1];
     size_t len = (size_t)arg[2];

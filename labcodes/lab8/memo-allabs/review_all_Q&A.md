@@ -108,7 +108,7 @@ pmm.c中,boot_map_segment函数应该是存在一定问题的...
 ```
 发生编号为idx的中断 => 找idtr寄存器 => 查找IDT的第idx个表项 => 跳转到idx中断对应中断服务例程入口 
 => 中断号压栈 => 跳转到__alltraps将通用寄存器压栈构造参数trapframe => 调用trap函数
-=> 调用trap_dispatch,根据中断号进行相应处理...处理完成后中断返回,根据trapframe恢复中断前的寄存器状态
+=> 调用trap_dispatch,根据中断号进行相应处理...处理完成后中断返回,根据trapframe恢复中断前的寄存器状态(如果是从用户态陷入的,也可能被调度)
 其中"查找IDT的第idx个表项"及以前的部分由cpu自动完成
 ```
 
@@ -118,7 +118,7 @@ pmm.c中,boot_map_segment函数应该是存在一定问题的...
 
 - **CPU如何通知中断处理程序发生缺页异常的?**  
 `cpu感知到某个编号的中断`后,自动查找idtr,然后查找IDT,然后跳转到缺页中断服务例程...
-WWW
+
 - **什么时候会发生页面故障?**  
 1.没有给要访问的虚拟地址映射物理地址;  
 2.对要访问的虚拟地址权限不足;  
@@ -134,7 +134,7 @@ ucore代码中需要做的就是:
 1.使能分页机制 => 让cpu以后自动查找页表;  
 2.告诉cpu查找页表的入口 => 加载cr3寄存器,cpu根据cr3找到页目录表,从而找到页表;  
 3.修改页表 => 根据自己需要填充页表,让cpu找到你需要的物理页;  
-W
+
 
 # 线程的实现与调度(lab4、5、6)
 ## 重难点
@@ -212,22 +212,26 @@ struct context {
 1.他们都需要保存一堆寄存器信息,不过其中最重要的都是eip(找到上次指令位置)、esp(找到上次的栈); 
 2.中断不意味着切换线程(姑且可以认为中断处理程序属于被打断的线程)  
 3.这里称为上下文不一定准确,通常所说的上下文包含了整个执行环境,而这里context、trapframe只是部分寄存器...
+4.trapframe可能保存部分用户态的信息(如用户栈、用户态的下一条指令...);context保存的一定是内核态的信息(因为线程切换只能在内核态发生!)
 ```
 ### 创建非idle内核线程的过程
 以创建initproc为例,主要函数调用关系如下:
 ```   
-                                                                         | setup_kstack 
-                                                                         | copy_files
-                                                                         |                      | mm_create
-kernel_thread(init_main,NULL,0);  => kernel_thread(设置tf) => do_fork => | copy_mm           => | setpu_pgdir
-                                                                         |                      | dup_mm      => copy_range(若新进程,复制用户空间)
-                                                                         | copy_thread(设置tf、context)
-                                                                         | wakeup_proc
-                                                                         | list_add
+kernel_thread(init_main,NULL,0);
+                                                            | alloc_page
+                                                            | setup_kstack 
+                                                            | copy_files
+  => kernel_thread(设置参数tf) => do_fork(CLONE_VM,0,tf) =>  | copy_mm   -----> 仍属于内核进程,mm_struct仅共享(不会执行mm_create、dup_map等) 
+tf[ip=kernel_thread_entry,bx=fn,dx=arg]                     | copy_thread(复制tf给新线程并设置tf[sp=用户栈]、context[ip=forkret,sp=tf])
+                                                            | wakeup_proc
+                                                            | list_add
 ```
-注意:调用kernel_thread后,只是创建了线程控制块,并不立即执行;  
+注意:
+```
+1.调用kernel_thread后,只是创建了线程控制块,并不立即执行(此时cpu控制权仍然属于父线程);  
+```
 - **何时开始执行内核线程的函数呢?**  
-`1.线程上下文context切换为init_main` => 由于copy_thread将`context.eip`设置为了forkret,于是将执行(trapentry.S):
+1.当这个子线程获得控制权后,`线程上下文context切换为init_main` => 由于copy_thread将`context.eip`设置为了forkret,于是将执行(trapentry.S):
 ```
 forkrets:
     # set stack to this new process's trapframe
@@ -262,58 +266,109 @@ kernel_thread_entry:        # void kernel_thread(void)
     pushl %eax              # save the return value of fn(arg)        ,调用结束,保存返回值在eax
     call do_exit            # call do_exit to terminate current thread,结束fn对应的这个线程
 ```
-### 创建用户线程的过程(以sh为例)
-主要可以`分为两个阶段`:1.在内核创建线程控制块,这时候的线程是内核线程user_main(但是并未立即执行); 2.user_main获得控制权后,将自己修改为用户线程  
-#### 第一阶段:创建内核线程控制块  
-第一阶段和"创建非idle内核线程的过程"相似:
+### 创建第一个用户进程/线程(以sh为例)
+主要可以`分为两个阶段`:1.在内核创建线程控制块,这时候的线程是内核线程user_main(但是并未立即执行); 2.`user_main获得控制权后,将自己修改为用户线程sh(即命令行程序)`  
+#### 第一阶段:创建内核线程控制块(do_fork)  
+第一阶段和"创建非idle内核线程的过程"相似,kernel_thread先调用do_fork创建user_main线程(它是sh的前身):
 ```
-                                                                                    | setup_kstack 
-                                                                                    | copy_files
-                                                                                    |                | mm_create
-initproc执行时调用kernel_thread(user_main,NULL,0);=> kernel_thread(tf) => do_fork => | copy_mm     => | setpu_pgdir
-                                                                                    |                | dup_mm => copy_range(若新进程,复制用户空间)
-                                                                                    | copy_thread(设置tf、context)
-                                                                                    | wakeup_proc
-                                                                                    | list_add
+initproc执行时调用kernel_thread(user_main,NULL,0);
+                                                          | alloc_page
+                                                          | setup_kstack 
+                                                          | copy_files
+  => kernel_thread(设置参数tf) =>do_fork(CLONE_VM,0,tf) => | copy_mm   -----> 仍属于内核进程,mm_struct仅共享(不会执行mm_create、dup_map等) 
+   tf[ip=kernel_thread_entry,bx=fn,dx=arg]                | copy_thread(复制tf给新线程并设置tf[sp=用户栈]、context[ip=forkret,sp=tf])
+                                                          | wakeup_proc
+                                                          | list_add
 ```
-这个时候只是创建了user_main对应的线程控制块,但是并未立即执行;什么时候执行呢?  
-如"创建非idle内核线程所述",user_main线程获得控制权要经过:切换到user_main的context => 通过__trapret进入到kernel_thread_entry => 在kernel_thread_entry中执行user_main函数...  
-#### 第二阶段:将内核转换为用户线程
+这个时候只是创建了user_main对应的线程控制块,但是并未立即执行(因为此时cpu控制权属于父线程);什么时候执行呢?  
+如"创建非idle内核线程"所述,user_main被执行要经过:获得cpu并切换到user_main的context => 通过__trapret进入到kernel_thread_entry => 在kernel_thread_entry中执行user_main函数... (user_main中将发生中断,由于修改了tf,中断返回时将直接进入用户态...) 
+#### 第二阶段:将内核线程转换为用户进程并执行(sys_exec)
 `创建用户线程与非idle内核线程的区别在于,创建用户线程时,user_main不会在kernel_thread_entry中正常返回并执行do_exit`;  
 而是在内核发起系统调用sys_exec将线程改成用户线程(主要是修改mm_struct映射用户空间);之后直接中断返回到用户态(因为load_icode中修改了trapframe);接着执行用户态程序(而不会在kernel_thread_entry中正常返回并退出)...函数调用如下:
 ```
+user_main在内核执行,它将自己修改为用户线程...
 user_main => ... => kernel_execve(调用sys_exec,在内核发起系统调用中断,但是返回时直接返回到用户态程序!) => sys_exec => do_execve ...(接下面)
 
                   | copy_string
                   | copy_kargv
                   | files_closeall
- =>  do_execve => | sysfile_open(打开可执行目标文件)
+ do_execve(sh) => | sysfile_open(打开可执行目标文件)
                   | lcr3(暂时设置页表为内核页表)
                   | exit_mmap(回收内存空间)
                   | put_pgdir(回收页目录表)
-                  | mm_destroy
-                  | load_icode             =>| mm_create
+                  | mm_destroy(删除do_fork时创建的mm)
+                  | load_icode             =>| mm_create(给新进程)
                                              | setup_pgdir
-                                             | load_icode_read(read exec file)
+                                             | load_icode_read(读可执行文件)
                                              | sysfile_close
                                              | mm_map(在页表中为用户堆栈段映射物理内存)
                                              | lcr3
                                              | 用户线程主函数的参数放到用户栈
-                                             | 设置用户线程的trapframe(于是中断返回时直接到了用户态)
+                                             | 设置用户线程的trapframe[ip=elf->entry,sp=用户栈](于是中断返回时直接到了用户态)
 ```
 完成了这个步骤以后,user_main线程才从内核态中断返回到用户态,执行用户程序...
-- **小结**  
-用户线程的创建需要分为两个步骤,而ucore这样做其实就是"用户线程的三种实现方式"中的内核实现!
+注意:
+```  
+1.user_main是曾经属于内核进程,之后自己更改为用户线程的 => 这与普通用户进程稍有区别;  
+2.sh线程(即user_main线程)是在系统启动时创建的,直接do_fork,一段时间后它获得控制权,然后在内核发起系统调用sys_exec,将自己改为用户线程(即只有一次系统调用,这里执行do_fork没有经过int指令,不算系统调用) => 而普通用户线程是要经过两次系统调用(fork、_exec/sys_exec)才能执行用户程序的 
+3.用户线程的创建需要分为两个步骤,从而它有内核态,ucore这样做其实就是"用户线程的三种实现方式"中的内核实现 => 普通用户线程同理
+4.sh用户进程只有一个线程!之后通过它fork创建的也是新进程,ucore暂时没有实现一个用户进程对应多个线程...
+5.sys_exec的关键:加载用户代码+修改trapframe直接返回到用户态执行用户代码
+```
 
-- **以user/hello.c为例,在命令行输入hello后的执行过程**  
+### 创建普通用户进程/线程(以ls为例)
+ls用户进程/线程的创建,是在系统启动后,在sh命令行输入ls可执行程序后,由sh程序创建的子进程,它是一个普通的进程.同样分为两个阶段,不过与sh的创建稍有不同...
+#### 第一阶段:创建用户线程控制块(fork,返回两次)  
+第一阶段与"创建第一个用户进程"类似,`区别在于,这时是sh程序在用户态执行系统fork系统调用时陷入内核,且do_fork时需要复制mm_struct!`
 ```
-....待补充
+在sh程序中执行fork(详见sh.c),陷入内核(会设置tf!!!)...然后调用do_fork...
+
+                                                | alloc_page
+                                                | setup_kstack 
+                                                | copy_files
+                                                | mm_create         
+=> do_fork(0,stack,sys_fork传入参数tf)   =>      | copy_mm     =>  | setup_pgdir (这时候需要复制mm_strcut,与创建内核线程、第一个用户线程不同!)
+                                                | dup_mmap
+                                                | copy_thread(复制tf给新线程并设置tf[sp=用户栈]、context[ip=forkret,sp=tf])
+                                                | wakeup_proc
+                                                | list_add
 ```
-### 创建用户线程的过程(以hello为例)
-### lab8实现用户线程的原理???
-注意对ucore而言,它是通过将内核线程initproc(就是do_execve代码中current)的mm_struct、页表、trapframe等进行了修改然后`initproc就变成了用户线程` => 在lab8中通过命令行执行hello时是这个原理吗?
-### 如何创建新的进程(不是线程)
-待完成...
+同上面的例子,这时子线程仍然不能获得控制权,不过它获得控制权并执行用户程序的过程与上面有所区别!
+- **关于fork()调用一次返回两次**  
+1.`对于父线程`:由于创建普通用户进程时是在用户态通过系统调用fork进行的,父线程执行完do_fork后需要中断返回(`不过也可能被切换,再次获得控制权后才返回用户态`,见trap函数)...;  
+2.`对于子线程`:等待一段时候后获得cpu并切换context => 执行forkret => `执行_trapret => 不过这时线程tf中的ip值与上面两个例子都不同,因为这时的tf是sys_fork设置的,根据ip值需要中断返回到用户态`...  
+.以上就是fork调用一次返回两次的原理!
+
+#### 第二阶段:执行用户进程(_exec/sys_exec)
+普通用户进程的第二阶段与第一个用户进程也稍有区别,在这里,用户进程在用户态执行一段时间后,通过_exec系统调用再次陷入内核,可参考sh.c中runcmd函数(在用户态系统调用,而第一个用户进程是在内核态系统调用!!!),过程如下:
+```
+ls在用户态调用_exec => 陷入内核...  => sys_exec => do_execve ...(接下面)
+
+                  | copy_string
+                  | copy_kargv
+                  | files_closeall
+ do_execve(ls) => | sysfile_open(打开可执行目标文件)
+                  | lcr3(暂时设置页表为内核页表)
+                  | exit_mmap(回收内存空间)
+                  | put_pgdir(回收页目录表)
+                  | mm_destroy(删除do_fork时创建的mm)
+                  | load_icode             =>| mm_create(给新进程)
+                                             | setup_pgdir
+                                             | load_icode_read(读可执行文件)
+                                             | sysfile_close
+                                             | mm_map(在页表中为用户堆栈段映射物理内存)
+                                             | lcr3
+                                             | 用户线程主函数的参数放到用户栈
+                                             | 设置用户线程的trapframe[ip=elf->entry,sp=用户栈](于是中断返回时直接到了用户态)
+```
+完成了这个步骤以后,ls线程才从内核态中断返回到用户态,执行用户程序...
+注意:_exec系统调用不一定是必须的
+```  
+1.如果子线程的代码就在父线程的代码文件中,fork返回后就可以直接执行子线程了,我们通常写代码就是这样的...
+2.然而,如果子线程是单独的可执行文件,就必须使用_exec了,比如我们的shell程序...
+3.关键:do_exec修改了trapframe,所以返回时才能执行新的用户程序(而不是执行shell中断前的程序)
+```
+
 ### 理解系统调用的过程/实现
 - **前期准备**  
 主要是初始化IDT,且要保证系统调用对应的中断号0x80能在用户态下发起中断,这部分详见idt_init()函数:
@@ -499,12 +554,14 @@ Java中的Condition也是如此!!!!
 ## 各lab的代码的工作
 - **lab1:bootloader的工作有哪些?**  
 ```
-   打开A20地址线  
-=> 检测物理内存  
-=> 使能保护模式(并跳转到32保护模式代码)  
-=> 设置段寄存器及堆栈指针(临时的堆栈)  
-=> 调用bootmain(加载ucore)  
+   (1.初始化临时GDT)
+=> 2.打开A20地址线  
+=> 3.检测物理内存  
+=> 4.使能保护模式(并跳转到32保护模式代码)  
+=> 5.设置段寄存器及堆栈指针(临时的堆栈)  
+=> 6.调用bootmain(加载ucore)  
 => 将控制交给kern_entry()函数...  
+记住前6个工作!!!!!!!!!!!!!!!!
 ```
 
 
@@ -522,7 +579,7 @@ Java中的Condition也是如此!!!!
    初始化物理内存管理器(first fit,重点)  
 => 初始化Page[]数组以及属于内核的物理内存的空闲链表(重要)  
 => 建立自映射机制(重要,不过应该没有建立)  
-=> 建立内核空间完整的地址映射(KERNBASE...映射到物理内存0...)  
+=> 建立内核空间完整的地址映射(KERNBASE...映射全部物理内部内存)  
 => 重新设置GDT(不再使用bootloader中临时建立的gdt)  
 ```
 

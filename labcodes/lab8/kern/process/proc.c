@@ -109,6 +109,8 @@ struct proc_struct *initproc = NULL;
 struct proc_struct *current = NULL;
 
 static int nr_process = 0;              // 当前线程总数
+static int nr_real_process_created=0;   // 有史以来创建过的进程数(而不是线程,也不是剩余的进程数!!!)  -- test by cdz
+                                        // 一个内核进程,剩余的全是用户进程
 
 // 定义见process/entry.S、process/switch.S、trap/trapentry.S
 /**
@@ -458,6 +460,7 @@ static int copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
     if ((mm = mm_create()) == NULL) {
         goto bad_mm;
     }
+    
     if (setup_pgdir(mm) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
@@ -491,7 +494,7 @@ bad_mm:
  *             - setup the kernel entry point and stack of process
  * - proc:新创建的子线程
  * - esp:父线程用户栈的栈顶指针,设置给tf->tf_esp字段,方便中断返回时找到用户栈...
- * 1.补全子线程proc的中断上下文信息
+ * 1.补全子线程proc的中断上下文信息(复制传入的tf,并进一步设置)
  * 2.补全子线程proc的线程上下文信息
  * 注意:这里proc->tf指向新线程proc内核栈空间的顶部!!! 
  * */
@@ -570,6 +573,8 @@ static void put_files(struct proc_struct *proc) {
  * - stack:       父线程的用户栈虚拟地址; 如果为0,说明是要创建一个内核线程(不需要用户栈)
  * - tf:          trapframe,部分寄存器值与父线程相同,部分不同 => 用于构造子线程的tf字段!
  * 创建当前线程的一个副本,他们的执行上下文、代码、数据都一样; 但是存储位置不同
+ * 注1:若在kernel_thread中调用,则clone_flags为CLONE_VM,新旧线程属于同一进程(内核进程)
+ * 注2:若在sys_fork中调用,则clone_flags为0,且指定了用户栈,新旧线程属于不同进程(新线程属于另起的一个进程)
  */
 int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     int ret = -E_NO_FREE_PROC;
@@ -582,7 +587,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 
 	//LAB5 YOUR CODE : (update LAB4 steps)
     /* Some Functions
-    *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
+    *    set_mm_countlinks:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
     *    -------------------
     *    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
     *    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
@@ -619,7 +624,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     proc->parent=current;
 
     int res_flag=0;
-    res_flag=setup_kstack(proc);            // 2.给新建的线程分配内核栈(每个线程私有)
+    res_flag=setup_kstack(proc);             // 2.给新建的线程分配内核栈(每个线程私有)
     if(res_flag!=0) goto bad_fork_cleanup_proc;
 
     res_flag=copy_files(clone_flags,proc);      // lab8添加; 复制文件控制块
@@ -628,7 +633,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     res_flag=copy_mm(clone_flags,proc);     // 3.复制或者共享当前线程的mm_struct给进程proc
     if(res_flag!=0) goto bad_fork_cleanup_proc;
 
-    copy_thread(proc,stack,tf);             // 4.初始化proc的成员tf、context
+    copy_thread(proc,stack,tf);             // 4.完善proc的成员tf、context
 
     bool intr_save;                         // 5.将新建的子线程加入proc_list、hash_list
     local_intr_save(intr_save); // 关中断        
@@ -639,7 +644,7 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     }
     local_intr_restore(intr_save);
 
-    wakeup_proc(proc);                      // 6.唤醒新建线程 => 使新建线程处于RUNNABLE状态                      
+    wakeup_proc(proc);                      // 6.唤醒新建线程 => 使新建线程处于RUNNABLE状态(但不立即执行)                      
     ret=proc->pid;                          // 7.设置返回值(返回新建线程的id)
 	
 fork_out:
@@ -794,6 +799,8 @@ static int load_icode(int fd, int argc, char **kargv) {
     if((mm=mm_create())==NULL){
         goto bad_mm;
     }
+    nr_real_process_created++;              // test by cdz(虽然do_fork=>copy_mm中可能创建mm,但是这种情况下它会在do_execve中被删除,不影响总数)
+    cprintf("------------------------- test by cdz,now have total created process(not remained) num:%d\n",nr_real_process_created);
 
     // (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT(这里说法不对,是复制了boot_pgdir,而不是直接等于)
     if(setup_pgdir(mm)!=0){    // 在内核分配新的空间,创建页目录表      
@@ -1003,7 +1010,7 @@ failed_cleanup:
  * - name:用户程序名
  * - argc:命令行参数个数
  * - argv:命令行参数,argc[0]是程序路径
- * 给用户程序name创建线程
+ * 使用当前线程执行用户程序name
  * 1.复制程序名和参数到内核空间
  * 2.调用load_icode加载可执行文件
  * 注意对ucore而言,它是通过将内核线程user_main(就是下面代码中current)的mm_struct、页表、trapframe等进行了修改
@@ -1051,13 +1058,18 @@ int do_execve(const char *name, int argc, const char **argv) {
         goto execve_exit;
     }
     if (mm != NULL) {
+
         lcr3(boot_cr3);             // 设置页表为内核空间页表
-        // 为什么要判断这个???
-        if (mm_count_dec(mm) == 0) {        // 仅当没有其他线程共享mm_struct时才能销毁...为什么要减1?
+        // 为什么要判断这个?
+        // => 调用do_fork后并不是马上执行do_execve,这段时间也许还会第二次创建新线程且共享了上次的mm
+        // 所以这里只是删除一次引用,不会影响在调用do_execve前第二次创建的线程
+        if (mm_count_dec(mm) == 0) {        // 仅当没有其他线程共享mm_struct时才能销毁
             exit_mmap(mm);     // 回收mm的用户内存空间
             put_pgdir(mm);     // 回收页目录表   
-            mm_destroy(mm);
+            mm_destroy(mm);   
         }
+
+        // 置为NULL,load_icode中会重新创建mm!!!
         current->mm = NULL;        // 由于目前处于内核,所以直接将mm置为NULL(对内核线程而言,他们共享boot_pgdir,不需要mm_struct)
     }
     ret= -E_NO_MEM;
@@ -1316,6 +1328,7 @@ void proc_init(void) {
     files_count_inc(idleproc->filesp);              // 共享文件控制块的线程数+1
     set_proc_name(idleproc, "idle");                // 设置线程名             
     nr_process ++;                                  // 第0个线程(之后仅在set_links中才会自加...)
+    nr_real_process_created++;                      // 内核进程 -- test by cdz
     current = idleproc; // 设置当前正在执行的线程为idle => 至此,ucore启动以来的所有执行过程都被认为属于idle线程
 
 

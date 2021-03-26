@@ -73,8 +73,11 @@ fd_array_free(struct file *file) {
     file->status = FD_NONE;
 }
 
-static void
-fd_array_acquire(struct file *file) {
+
+/**
+ * 将文件被打开次数+1
+ */ 
+static void fd_array_acquire(struct file *file) {
     assert(file->status == FD_OPENED);
     fopen_count_inc(file);
 }
@@ -122,9 +125,11 @@ fd_array_dup(struct file *to, struct file *from) {
     fd_array_open(to);
 }
 
-// fd2file - use fd as index of fd_array, return the array item (file)
-static inline int
-fd2file(int fd, struct file **file_store) {
+/**
+ * fd2file - use fd as index of fd_array, return the array item (file)
+ * 根据文件描述符fd,查找struct file
+ **/
+static inline int fd2file(int fd, struct file **file_store) {
     if (testfd(fd)) {
         struct file *file = get_fd_array() + fd;
         if (file->status == FD_OPENED && file->fd == fd) {
@@ -135,9 +140,13 @@ fd2file(int fd, struct file **file_store) {
     return -E_INVAL;
 }
 
-// file_testfd - test file is readble or writable?
-bool
-file_testfd(int fd, bool readable, bool writable) {
+/**
+ * file_testfd - test file is readble or writable?
+ * - readable:检测是否可读
+ * - writable:检测是否可写
+ * 检测fd中的数据是否准备好读/写?
+ */
+bool file_testfd(int fd, bool readable, bool writable) {
     int ret;
     struct file *file;
     if ((ret = fd2file(fd, &file)) != 0) {
@@ -157,13 +166,13 @@ int
 file_open(char *path, uint32_t open_flags) {
     bool readable = 0, writable = 0;
     switch (open_flags & O_ACCMODE) {
-    case O_RDONLY: readable = 1; break;
-    case O_WRONLY: writable = 1; break;
-    case O_RDWR:
-        readable = writable = 1;
-        break;
-    default:
-        return -E_INVAL;
+        case O_RDONLY: readable = 1; break;
+        case O_WRONLY: writable = 1; break;
+        case O_RDWR:
+            readable = writable = 1;
+            break;
+        default:
+            return -E_INVAL;
     }
 
     int ret;
@@ -208,20 +217,21 @@ file_close(int fd) {
     return 0;
 }
 
-// read file
-int
-file_read(int fd, void *base, size_t len, size_t *copied_store) {
+/**
+ * read file
+ * 读取文件
+ */ 
+int file_read(int fd, void *base, size_t len, size_t *copied_store) {
     int ret;
     struct file *file;
     *copied_store = 0;
-    if ((ret = fd2file(fd, &file)) != 0) {
+    if ((ret = fd2file(fd, &file)) != 0) {      // 找到file结构体
         return ret;
     }
     if (!file->readable) {
         return -E_INVAL;
     }
     fd_array_acquire(file);
-
     struct iobuf __iob, *iob = iobuf_init(&__iob, base, len, file->pos);
     ret = vop_read(file->node, iob);
 

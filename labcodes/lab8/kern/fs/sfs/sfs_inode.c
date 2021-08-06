@@ -699,6 +699,7 @@ static inline int sfs_io(struct inode *node, struct iobuf *iob, bool write) {
     struct sfs_fs *sfs = fsop_info(vop_fs(node), sfs);
     struct sfs_inode *sin = vop_info(node, sfs_inode);
     int ret;
+    
     lock_sin(sin);
     {
         size_t alen = iob->io_resid;
@@ -1054,11 +1055,15 @@ sfs_lookup(struct inode *node, char *path, struct inode **node_store) {
 
 
 
-/*******************************************************************
+/******************************************************************************************************
  *                  下为文件和目录操作
  * inode_ops定义在VFS层、函数的参数也定义在VFS层
  * 函数是SFS层实现,从而将两层衔接
- *  *****************************************************************/
+ * 
+ * 注:ucore中所有inode_ops其实就是指对文件的操作;
+ *    而linux下是用inode_operations(在inode结构中)表示inode的操作,file_operations(在file结构中)表示对文件的操作
+ *
+ *  ***************************************************************************************************/
 
 // The sfs specific DIR operations correspond to the abstract operations on a inode.
 static const struct inode_ops sfs_node_dirops = {

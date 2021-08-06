@@ -19,7 +19,7 @@ int kern_init(void) __attribute__((noreturn));   // 声明函数属性 => 不会
 void grade_backtrace(void);
 static void lab1_switch_test(void);
 
-// ucore初始化(在entry.S中被调用)
+/* ucore初始化(在entry.S中被调用) */
 int kern_init(void) {
     extern char edata[], end[];             // 定义见kernel.ld,分别是bss段的起始、结束地址
     memset(edata, 0, end - edata);          // bss段存储未初始化的以及被初始化为0的全局或静态C变量.
@@ -51,7 +51,7 @@ int kern_init(void) {
 
     swap_init();                // 初始化swap分区 => 物理内存的页面置换(fifo)在这个组件中实现;检验swap算法
 
-    fs_init();                  // 初始化文件系统
+    fs_init();                  // 初始化文件系统:vfs_init、dev_init、sfs_init
     
     clock_init();               // 初始化时钟(使能时钟中断)
 

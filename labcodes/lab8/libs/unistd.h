@@ -1,7 +1,7 @@
 #ifndef __LIBS_UNISTD_H__
 #define __LIBS_UNISTD_H__
 
-#define T_SYSCALL           0x80        // 系统调用的中断号
+#define T_SYSCALL           0x80        /* 系统调用的中断号(所有系统调用共用这一个中断号) => 实际上目前多数采用 syscall 指令... */
 
 /* syscall number */
 #define SYS_exit            1

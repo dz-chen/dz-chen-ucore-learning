@@ -147,21 +147,25 @@ static const struct inode_ops dev_node_ops = {
 };
 
 
-// 调用的是具体设备文件中的初始化程序,比如dev_init_stdout() => 见dev_stdout.c
+/* 调用的是具体设备文件中的初始化程序,比如dev_init_stdout() => 见dev_stdout.c */
 #define init_device(x)                                  \
     do {                                                \
         extern void dev_init_##x(void);                 \
         dev_init_##x();                                 \
     } while (0)
 
-/* dev_init - Initialization functions for builtin vfs-level devices. */
-void
-dev_init(void) {
+/**
+ * dev_init - Initialization functions for builtin vfs-level devices. 
+ *  初始化设备:stdin、stdout、disk0
+ */
+void dev_init(void) {
    // init_device(null);
     init_device(stdin);             // 初始化各设备
     init_device(stdout);
     init_device(disk0);
 }
+
+
 /**
  * dev_create_inode - Create inode for a vfs-level device. 
  * 创建一个inode,并完成inode结点的初始化

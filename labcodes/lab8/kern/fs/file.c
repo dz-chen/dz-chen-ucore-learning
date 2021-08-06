@@ -225,13 +225,14 @@ int file_read(int fd, void *base, size_t len, size_t *copied_store) {
     int ret;
     struct file *file;
     *copied_store = 0;
-    if ((ret = fd2file(fd, &file)) != 0) {      // 找到file结构体
+    if ((ret = fd2file(fd, &file)) != 0) {      /* 找到file结构体 */
         return ret;
     }
     if (!file->readable) {
         return -E_INVAL;
     }
     fd_array_acquire(file);
+    
     struct iobuf __iob, *iob = iobuf_init(&__iob, base, len, file->pos);
     ret = vop_read(file->node, iob);
 

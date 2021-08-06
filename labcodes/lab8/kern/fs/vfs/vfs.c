@@ -13,8 +13,7 @@ static struct inode *bootfs_node = NULL;
 extern void vfs_devlist_init(void);
 
 // __alloc_fs - allocate memory for fs, and set fs type
-struct fs *
-__alloc_fs(int type) {
+struct fs * __alloc_fs(int type) {
     struct fs *fs;
     if ((fs = kmalloc(sizeof(struct fs))) != NULL) {
         fs->fs_type = type;
@@ -24,7 +23,7 @@ __alloc_fs(int type) {
 
 /**
  * vfs_init -  vfs initialize
- * 初始化VFS
+ * 初始化VFS:只是初始化整个fs的信号量bootfs_sem, 以及设备链表vdev_list_sem
  */ 
 void vfs_init(void) {
     sem_init(&bootfs_sem, 1);

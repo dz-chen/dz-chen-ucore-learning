@@ -15,8 +15,8 @@ struct iobuf;   // kernel or userspace I/O buffer (iobuf.h)
  * Information:
  *      fs_info   : filesystem-specific data (sfs_fs)
  *      fs_type   : filesystem type
+ * 
  * Operations:
- *
  *      fs_sync       - Flush all dirty buffers to disk.
  *      fs_get_root   - Return root inode of filesystem.
  *      fs_unmount    - Attempt unmount of filesystem.
@@ -29,8 +29,9 @@ struct iobuf;   // kernel or userspace I/O buffer (iobuf.h)
  * If fs_unmount returns an error, the filesystem stays mounted, and
  * consequently the struct fs instance should remain valid. On success,
  * however, the filesystem object and all storage associated with the
- * filesystem should have been discarded/released.
+ * filesystem should have been discarded/released.  => TODO:为什么?
  *
+ * linux下内核已经没有这个结构了,可见ucore与真实的系统还是有较大差异的...
  */
 struct fs {
     union {

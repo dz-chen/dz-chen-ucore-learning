@@ -82,8 +82,10 @@ cga_init(void) {
 
 static bool serial_exists = 0;
 
-static void
-serial_init(void) {
+/**
+ * 初始化串口
+ */ 
+static void serial_init(void) {
     // Turn off the FIFO
     outb(COM1 + COM_FCR, 0);
 
@@ -113,10 +115,11 @@ serial_init(void) {
 }
 
 
+
+
 /**
  * 将字符输出到并口
- * 
- * */
+ */
 static void lpt_putc_sub(int c) {
     int i;
     for (i = 0; !(inb(LPTPORT + 1) & 0x80) && i < 12800; i ++) {
@@ -133,8 +136,7 @@ static void lpt_putc_sub(int c) {
  *  '\b'含义:将光标从当前位置向前(左)移动一个字符,遇到\n或\r则停止移动.并从此位置开始输出后面的字符
  *  
  * */
-static void
-lpt_putc(int c) {
+static void lpt_putc(int c) {
     if (c != '\b') {                    // 普通字符,直接输出
         lpt_putc_sub(c);
     }
@@ -414,17 +416,21 @@ kbd_intr(void) {
     cons_intr(kbd_proc_data);
 }
 
-static void
-kbd_init(void) {
+/**
+ * 初始化键盘
+ */ 
+static void kbd_init(void) {
     // drain the kbd buffer
     kbd_intr();
     // 通过中断控制器使能键盘输入中断
     pic_enable(IRQ_KBD);
 }
 
-/* cons_init - initializes the console devices */
-void
-cons_init(void) {
+/**
+ * cons_init - initializes the console devices 
+ * 初始化终端,包括:cga_init、serial_init、kbd_init 
+ */
+void cons_init(void) {
     cga_init();
     serial_init();
     kbd_init();

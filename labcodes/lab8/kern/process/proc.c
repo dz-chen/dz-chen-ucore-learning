@@ -800,7 +800,6 @@ static int load_icode(int fd, int argc, char **kargv) {
         goto bad_mm;
     }
     nr_real_process_created++;              // test by cdz(虽然do_fork=>copy_mm中可能创建mm,但是这种情况下它会在do_execve中被删除,不影响总数)
-    cprintf("------------------------- test by cdz,now have total created process(not remained) num:%d\n",nr_real_process_created);
 
     // (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT(这里说法不对,是复制了boot_pgdir,而不是直接等于)
     if(setup_pgdir(mm)!=0){    // 在内核分配新的空间,创建页目录表      
@@ -1206,7 +1205,6 @@ static int kernel_execve(const char *name, const char **argv) {
         argc ++;
     }
 
-    //cprintf("------------------------------ test by cdz,begin sys_call in kernel to create user thread!\n");
     // 通过系统调用SYS_exec创建用户线程 => 在内核发生系统调用中断
     asm volatile (
         "int %1;"
@@ -1215,7 +1213,6 @@ static int kernel_execve(const char *name, const char **argv) {
         : "memory");
     
     // 这个函数不会返回,因为上面执行的系统调用中修改了trapframe,从中断返回时直接就到了用户态,而不是从这里开始接着往下执行...
-    //cprintf("------------------------------ test by cdz,begin sys_call in kernel to create user thread!\n");
     return ret;
 }
 
@@ -1248,8 +1245,7 @@ static int user_main(void *arg) {
             KERNEL_EXECVE2(TEST);
         #endif
     #else
-        //cprintf("------------------------------ test by cdz,not define TEST in user_main\n");
-        KERNEL_EXECVE(sh);              // lab8中系统启动时创建的是命令行进程,输入命令时再创建新的线程...
+        KERNEL_EXECVE(sh);              /* lab8中系统启动时创建的是命令行进程,输入命令时再创建新的线程 */
     #endif
     panic("user_main execve failed.\n");
 }
@@ -1276,7 +1272,7 @@ static int init_main(void *arg) {
     }
     extern void check_sync(void);
 
-    check_sync();      // check philosopher sync problem => 检查线程同步(通过哲学家就餐问题)    
+    // check_sync();      /* check philosopher sync problem => 检查线程同步(通过哲学家就餐问题) */    
     
     while (do_wait(0, NULL) == 0) {
 

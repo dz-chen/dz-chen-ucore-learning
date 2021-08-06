@@ -11,8 +11,12 @@ struct inode;
 struct stat;
 struct dirent;
 
-// 文件的结构体
-// 包括文件状态、是否可读/写、fd、当前指针、inode指针(关键)、被打开次数
+/**
+ * 打开文件的结构体
+ * 内核会为每个打开文件生成一个file结构,磁盘上的同一个文件若被多个进程打开,则会生成多个file结构;
+ * 每个进程都有自己的打开文件表(fd_array数组),里边全是此进程打开的文件对应的file结构 => 见proc_struct -> files_struct -> file
+ * 包括文件状态、是否可读/写、fd、当前指针、inode指针(关键)、被打开次数
+ */ 
 struct file {
     enum {
         FD_NONE, FD_INIT, FD_OPENED, FD_CLOSED,
@@ -23,6 +27,7 @@ struct file {
     off_t pos;                  // 访问当前文件的位置
     struct inode *node;         // 该文件对应的inode指针 => inode是对磁盘文件的抽象
     int open_count;             // 文件被打开次数
+    /* struct file_operations	*f_op; */   /* linux下通常是直接在file下加入了文件操作的结构体... */
 };
 
 void fd_array_init(struct file *fd_array);

@@ -11,12 +11,20 @@
 #include <error.h>
 #include <assert.h>
 
-// device info entry in vdev_list  => 代表设备链表中的一个结点
+/**
+ * device info entry in vdev_list  => 代表设备链表中的一个结点
+ * 
+ * 这个结构的主要作用是将device和inode联系起来,如何联系:
+ * => 文件系统通过一个链接vfs_dev_t结构的双向链表vdev_list找到device对应的inode数据结构,
+ *    一个inode节点的成员变量in_type的值是0x1234,则此inode的成员变量in_info将成为一个device结构,
+ *    这样inode就和一个设备建立了联系,这个inode就是一个设备文件.
+ *    即:vfs_dev_t -> inode -> in_info = device
+ */ 
 typedef struct {
     const char *devname;
     // device通过devnode与inode关联; inode中则是_device_info成员与device关联
     struct inode *devnode;         // 此设备对应的文件inode (即将此设备模型化为一个文件); 
-    struct fs *fs;
+    struct fs *fs;                 // 文件系统
     bool mountable;                // 是否可挂载
     list_entry_t vdev_link;        // 与设备链表的连接点
 } vfs_dev_t;
@@ -25,10 +33,10 @@ typedef struct {
     to_struct((le), vfs_dev_t, member)
 
 
-// 设备链表
+/* 设备链表 */
 static list_entry_t vdev_list;     // device info list in vfs layer
 
-// 通过信号量实现vdev_list的锁!
+/* 通过信号量实现vdev_list的锁! */
 static semaphore_t vdev_list_sem; 
 
 static void
@@ -41,8 +49,9 @@ unlock_vdev_list(void) {
     up(&vdev_list_sem);
 }
 
-void
-vfs_devlist_init(void) {
+
+/* 初始化设备链表 */
+void vfs_devlist_init(void) {
     list_init(&vdev_list);
     sem_init(&vdev_list_sem, 1);
 }

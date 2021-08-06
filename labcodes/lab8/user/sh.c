@@ -17,7 +17,7 @@ char shcwd[BUFSIZE];
 
 /********************************************************************************************
  *                             命令行程序
- * .系统启动创建的第一个用户进程就是sh(见proc.c,user_main函数)
+ * .系统启动创建的第一个用户进程就是sh(见proc.c/user_main()函数)
  * .之后在命令行界面输入sfs(即disk0)中有的可执行文件名,即可执行相应程序...
  * .文件描述符
  *      0:stdin
@@ -59,17 +59,18 @@ int gettoken(char **p1, char **p2) {
 
 
 /**
- * 读取命令行参数(整行数据),虚拟地址在用户空间!
+ * 从stdin读取命令行参数(整行数据),虚拟地址在用户空间!
  */
 char * readline(const char *prompt) {
-    static char buffer[BUFSIZE];            // static是静态的,可以传递出去...
+    static char buffer[BUFSIZE];            /* static是静态的,可以传递出去... */
+
     if (prompt != NULL) {
-        printf("%s", prompt);
+        printf("%s", prompt);               /* 提示符:$ */
     }
     int ret, i = 0;
     while (1) {
         char c;
-        if ((ret = read(0, &c, sizeof(char))) < 0) {
+        if ((ret = read(0, &c, sizeof(char))) < 0) {      /* 从stdin(0)读取 */
             return NULL;
         }
         else if (ret == 0) {
@@ -79,7 +80,6 @@ char * readline(const char *prompt) {
             }
             return NULL;
         }
-
         if (c == 3) {
             return NULL;
         }
@@ -97,6 +97,7 @@ char * readline(const char *prompt) {
             break;
         }
     }
+
     return buffer;
 }
 
@@ -235,24 +236,25 @@ runit:                          // 执行命令行输入的可执行程序
 int main(int argc, char **argv) {
     printf("user sh is running!!!\n");
     int ret, interactive = 1;
+
+    /* 系统启动时就创建了sh进程,且没有输入参数; 这里argc应该为1(进程名字) */
     if (argc == 2) {
         if ((ret = reopen(0, argv[1], O_RDONLY)) != 0) {
             return ret;
         }
         interactive = 0;
-        //printf("-------------------------- test by cdz,argc=0 in command");
     }
     else if (argc > 2) {
         usage();            // 提示正确的参数形式
         return -1;
     }
-    //printf("-------------------------- test by cdz,argc=%d\n",argc);  // 系统启动时就创建了sh进程,且没有输入参数; 这里argc应该为1(进程名字) 
+    
 
     //shcwd = malloc(BUFSIZE);
 
     assert(shcwd != NULL);
 
-    char *buffer;          // 存储在命令行输入的数据                         
+    char *buffer;          /* 存储在命令行输入的数据 */                         
     while ((buffer = readline((interactive) ? "$ " : NULL)) != NULL) {
         shcwd[0] = '\0';
         int pid;

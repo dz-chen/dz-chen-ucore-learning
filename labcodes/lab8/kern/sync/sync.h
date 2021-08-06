@@ -8,17 +8,23 @@
 #include <atomic.h>
 #include <sched.h>
 
-static inline bool
-__intr_save(void) {
-    if (read_eflags() & FL_IF) {            // 判断EFLAS的中断屏蔽位
+/**
+ * 关中断,并返回之前EFLAG的中断屏蔽位
+ * 如果本来就是已经关了中断的,则返回0 
+ */
+static inline bool __intr_save(void) {
+    if (read_eflags() & FL_IF) {            /* 判断EFLAS的中断屏蔽位 */
         intr_disable();
         return 1;
     }
-    return 0;
+    return 0;                               /* 这种情况说明本来就关闭了中断 */
 }
 
-static inline void
-__intr_restore(bool flag) {
+
+/**
+ * 开中断
+ */ 
+static inline void __intr_restore(bool flag) {
     if (flag) {
         intr_enable();
     }

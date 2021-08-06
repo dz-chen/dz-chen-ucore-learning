@@ -28,12 +28,12 @@
 #define T_SIMDERR               19  // SIMD floating point error
 
 /* Hardware IRQ numbers. We receive these as (IRQ_OFFSET + IRQ_xx) */
-// 注:IRQ即:中断请求
+/* 硬件中断请求,从32开始 */
 #define IRQ_OFFSET              32  // IRQ 0 corresponds to int IRQ_OFFSET
 
 #define IRQ_TIMER               0
 #define IRQ_KBD                 1
-#define IRQ_COM1                4
+#define IRQ_COM1                4       /* 串口硬件中断 */
 #define IRQ_IDE1                14
 #define IRQ_IDE2                15
 #define IRQ_ERROR               19

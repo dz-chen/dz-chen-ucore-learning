@@ -45,46 +45,44 @@
 #define SFS_TYPE_DIR                                2       // 目录
 #define SFS_TYPE_LINK                               3       // 硬链接
 
+
+
+
 /**
- * On-disk superblock, 超块(文件系统的第一个block),包含文件系统的基本信息
+ * On-disk superblock
+ * 超块(文件系统的第一个block),包含文件系统的基本信息
+ * 
+ *                          SFS在磁盘上的布局
+ * **********************************************************************
+ * | superblock | root-dir node |  freemap | inode、file data、dir data |
+ * **********************************************************************
+ * 
+ * 挂载SFS的地方,参考:sfs_fs.c/sfs_do_mount()
  **/
 struct sfs_super {
-    uint32_t magic;                           /* magic number, should be SFS_MAGIC */
-    uint32_t blocks;                          /* # of blocks in fs */
-    uint32_t unused_blocks;                   /* # of unused blocks in fs */
-    char info[SFS_MAX_INFO_LEN + 1];          /* infomation for sfs  */
+    uint32_t magic;                           /* magic number, should be SFS_MAGIC => 通过这个字段来判断从磁盘加载的文件系统是不是SFS */
+    uint32_t blocks;                          /* # of blocks in fs                 => 所有block的数量(ucore以block=4K为基本单位) */
+    uint32_t unused_blocks;                   /* # of unused blocks in fs          => 尚未使用的block数量 */
+    char info[SFS_MAX_INFO_LEN + 1];          /* infomation for sfs                => 只是一个字符串 "simple file system" */
 };
 
 /**
- *  inode (on disk)
- *  一个sfs_disk_inode对应了一个实际位于磁盘上的文件,这个inode存储了文件的相关信息
- * 存储在硬盘中,需要时读入内存
- * 注1:如果此disk_inode对应的是一个目录 =>
- *     direct指向的则是目录项的数据结构disk_entry,通过这个结构才能继续查找文件
- *     indirect指向的则是disk_entry的索引...
- * 注2:ucore中一个文件最多可存储数据12*4K+1024*4K=48K+4MB
- *     推导:直接索引12个(SFS_NDIRECT) => 可找到数据12*4K
- *          一级间接索引1024个(索引块的大小/索引条目的大小=4096/sizeof(int)=1024) => 可找到1024*4K
-**/
-struct sfs_disk_inode {
-    uint32_t size;                   // 如果inode表示常规文件,则size是文件大小
-    uint16_t type;                   // inode的文件类型 => 可能是SFS_TYPE_DIR
-    uint16_t nlinks;                 // 此inode的硬连接数
-    uint32_t blocks;                 // 此inode/文件对应数据块的个数
-    uint32_t direct[SFS_NDIRECT];    // 此inode的直接数据块索引值(即数据部分的第一个磁盘块号,有SFS_NDIRECT个)
-    uint32_t indirect;               // 此inode的一级间接数据块索引值; 为0表示不使用间接索引(因为block0是超块);指向索引块
-//    uint32_t db_indirect;          /* double indirect blocks */
-//   unused
+ * filesystem for sfs
+ * 在内存 中表示整个具体的文件系统,fs -> sfs_fs 指向这个具体的文件系统
+ */
+struct sfs_fs {
+    struct sfs_super super;                         /* on-disk superblock => 超级块,包含关于文件系统的所有关键参数 */
+    struct device *dev;                             /* device mounted on */
+    struct bitmap *freemap;                         /* blocks in use are mared 0 */
+    bool super_dirty;                               /* true if super/freemap modified */
+    void *sfs_buffer;                               /* buffer for non-block aligned io */
+    semaphore_t fs_sem;                             /* semaphore for fs */
+    semaphore_t io_sem;                             /* semaphore for io */
+    semaphore_t mutex_sem;                          /* semaphore for link/unlink and rename */
+    list_entry_t inode_list;                        /* inode linked-list */
+    list_entry_t *hash_list;                        /* inode hash linked-list */
 };
 
-/**
- *  file entry (on disk) => 目录项
- *  存储在硬盘中,需要时读入内存
- **/
-struct sfs_disk_entry {
-    uint32_t ino;                        // 目录项对应的文件/子目录的索引块值(ucore直接取磁盘块号)
-    char name[SFS_MAX_FNAME_LEN + 1];    // 文件名
-};
 
 /**
  * inode for sfs =>对硬盘上的inode的包装,故sfs_inode可被看做vnode
@@ -102,6 +100,48 @@ struct sfs_inode {
 };
 
 
+/**
+ *  inode (on disk)
+ *  一个sfs_disk_inode对应了一个实际位于磁盘上的文件,这个inode存储了文件的相关信息
+ * 存储在硬盘中,需要时读入内存
+ * 
+ * 注1:如果此disk_inode对应的是一个目录 =>
+ *     direct指向的则是目录项的数据结构disk_entry,通过这个结构才能继续查找文件
+ *     indirect指向的则是disk_entry的索引...
+ * 注2:ucore中一个文件最多可存储数据12*4K+1024*4K=48K+4MB
+ *     推导:直接索引12个(SFS_NDIRECT) => 可找到数据12*4K
+ *          一级间接索引1024个(索引块的大小/索引条目的大小=4096/sizeof(int)=1024) => 可找到1024*4K
+ * 注3:磁盘块号!=扇区号,最终对磁盘的访问通常是以扇区为单位,但是os通常定义了block,数据以block为单位
+ *     ucore中一个block定义为page大小(4k),恰好是8个扇区 
+ * 注4:为了实现简单ucore磁盘上的每个inode都占用了一个block(虽然很显然没使用完) !
+ * 
+ * 注5:对于普通文件,索引值指向的block中保存的是文件中的数据;
+ *     而对于目录,索引值指向的数据 保存的是目录下所有的文件名以及对应的索引节点所在的索引块(磁盘块)所形成的数组
+ *     => 即可以理解为: sfs_disk_inode->data=sfs_disk_entry[] !!!
+ *
+**/
+struct sfs_disk_inode {
+    uint32_t size;                   // 如果inode表示常规文件,则size是文件大小
+    uint16_t type;                   // inode的文件类型 => 可能是SFS_TYPE_DIR
+    uint16_t nlinks;                 // 此inode的硬连接数
+    uint32_t blocks;                 // 此inode/文件对应数据块的个数
+    uint32_t direct[SFS_NDIRECT];    // 此inode的直接数据块索引值(即直接存储一小部分数据所在的磁盘块号,有SFS_NDIRECT个)
+    uint32_t indirect;               // 此inode的一级间接数据块索引值; 为0表示不使用间接索引(因为block0是超块);指向索引块
+//    uint32_t db_indirect;          /* double indirect blocks */
+//   unused
+};
+
+/**
+ * file entry (on disk) => 目录项
+ * 存储在硬盘中,需要时读入内存
+ * 注意sfs_disk_entry与sfs_disk_inode的关系: sfs_disk_inode若是目录,则其数据部分是一个sfs_disk_entry[]数组
+ * 通过读取ino这个block的数据，能够得到相应的文件或文件夹的inode
+ */
+struct sfs_disk_entry {
+    uint32_t ino;                      /* 目录项对应的文件/子目录的索引块值(ucore直接取磁盘块号 => linux下其实有专门的代码来分配编号) */
+    char name[SFS_MAX_FNAME_LEN + 1];  /* 文件名 */
+};
+
 
 #define sfs_dentry_size                             \
     sizeof(((struct sfs_disk_entry *)0)->name)
@@ -111,21 +151,6 @@ struct sfs_inode {
 #define le2sin(le, member)                          \
     to_struct((le), struct sfs_inode, member)
 
-/**
- *  filesystem for sfs => 在内存中表示整个文件系统
- **/
-struct sfs_fs {
-    struct sfs_super super;                         /* on-disk superblock */
-    struct device *dev;                             /* device mounted on */
-    struct bitmap *freemap;                         /* blocks in use are mared 0 */
-    bool super_dirty;                               /* true if super/freemap modified */
-    void *sfs_buffer;                               /* buffer for non-block aligned io */
-    semaphore_t fs_sem;                             /* semaphore for fs */
-    semaphore_t io_sem;                             /* semaphore for io */
-    semaphore_t mutex_sem;                          /* semaphore for link/unlink and rename */
-    list_entry_t inode_list;                        /* inode linked-list */
-    list_entry_t *hash_list;                        /* inode hash linked-list */
-};
 
 /* hash for sfs */
 #define SFS_HLIST_SHIFT                             10
@@ -138,7 +163,8 @@ struct sfs_fs {
 /* size of freemap (in blocks) */
 #define sfs_freemap_blocks(super)                   ROUNDUP_DIV((super)->blocks, SFS_BLKBITS)
 
-// 位于vfs层的fs 和 inode
+
+/* 位于vfs层的fs 和 inode */
 struct fs;
 struct inode;
 

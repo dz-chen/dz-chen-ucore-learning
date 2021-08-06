@@ -8,9 +8,9 @@
  *
  * CALL GRAPH:
  *   kern_init-->fs_init-->sfs_init
+ * 其实就是挂载SFS
  */
-void
-sfs_init(void) {
+void sfs_init(void) {
     int ret;
     if ((ret = sfs_mount("disk0")) != 0) {
         panic("failed: sfs: sfs_mount: %e.\n", ret);

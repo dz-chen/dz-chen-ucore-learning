@@ -37,7 +37,7 @@ static wait_queue_t __wait_queue, *wait_queue = &__wait_queue;
 
 /**
  * 在键盘中断发生后,先调用理解cons_getc()获取字符
- * 再调用dev_stdin_write()将字符写到stdin_buffer
+ * 再调用dev_stdin_write()将字符写到stdin_buffer,最后唤醒一个等待键盘的进程
  * 详见trap.c/trap_dispatch() 
  * */
 void dev_stdin_write(char c) {
@@ -49,7 +49,7 @@ void dev_stdin_write(char c) {
             if (p_wpos - p_rpos < STDIN_BUFSIZE) {
                 p_wpos ++;
             }
-            if (!wait_queue_empty(wait_queue)) {       // 从阻塞队列唤醒进程
+            if (!wait_queue_empty(wait_queue)) {       // 从阻塞队列唤醒等待键盘的进程
                 wakeup_queue(wait_queue, WT_KBD, 1);
             }
         }
@@ -79,8 +79,11 @@ static int dev_stdin_read(char *buf, size_t len) {
 
                     schedule();                       // 选取新的进程执行,进入另一个进程的上下文...
 
-                    // 这个阻塞进程被唤醒后才继续执行,唤醒时间见trap.c 
-
+                    /**
+                     * 这个阻塞进程被唤醒后才继续执行
+                     * 唤醒时间:当设备中准备好数据时,会发生IRQ_KBD中断,trap_dispath对这个中断作出响应
+                     * 将设备中的数据写入stdin的缓冲,然后从阻塞队列唤醒一个等待的进程
+                     */  
                     local_intr_save(intr_flag);
                     wait_current_del(wait_queue, wait);
                     if (wait->wakeup_flags == WT_KBD) {
@@ -123,8 +126,7 @@ static int stdin_io(struct device *dev, struct iobuf *iob, bool write) {
     return -E_INVAL;
 }
 
-static int
-stdin_ioctl(struct device *dev, int op, void *data) {
+static int stdin_ioctl(struct device *dev, int op, void *data) {
     return -E_INVAL;
 }
 
@@ -142,7 +144,7 @@ static void stdin_device_init(struct device *dev) {
     dev->d_io = stdin_io;
     dev->d_ioctl = stdin_ioctl;
 
-    p_rpos = p_wpos = 0;                
+    p_rpos = p_wpos = 0;                /* stdin缓冲区的读写指针 */     
     wait_queue_init(wait_queue);
 }
 

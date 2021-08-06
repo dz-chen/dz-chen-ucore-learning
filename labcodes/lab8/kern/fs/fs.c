@@ -78,8 +78,13 @@ void files_closeall(struct files_struct *filesp) {
     }
 }
 
-int
-dup_files(struct files_struct *to, struct files_struct *from) {
+
+/**
+ * 复制文件控制块files_struct
+ * 需要完全拷贝打开文件表(fd_array)!!!
+ * 主要在创建子进程时使用,见process/proc.c/copy_files()
+ */ 
+int dup_files(struct files_struct *to, struct files_struct *from) {
 //    cprintf("[dup_files]\n");
     assert(to != NULL && from != NULL);
     assert(files_count(to) == 0 && files_count(from) > 0);

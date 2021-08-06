@@ -32,12 +32,12 @@ stdout_close(struct device *dev) {
  * 完成向stdout写数据
  * 将缓冲区iob(struct iobuf)中的数据写到stdout
  * => 建议关注调用的cputchar,看一下底层是如何写到设备的!!!
- * */
+ */
 static int stdout_io(struct device *dev, struct iobuf *iob, bool write) {
     if (write) {
-        char *data = iob->io_base;                      // 缓冲区基址
+        char *data = iob->io_base;                      /* 缓冲区基址 */
         for (; iob->io_resid != 0; iob->io_resid --) {
-            cputchar(*data ++); // 通过外设驱动将数据输出到串口、并口、CGA... => 见kern/libs/stdio.c,必看!!!
+            cputchar(*data ++);                         /* 通过外设驱动将数据输出到串口、并口、CGA... => 见kern/libs/stdio.c,必看!!! */
         }
         return 0;
     }
@@ -71,15 +71,14 @@ static void stdout_device_init(struct device *dev) {
  **/
 void dev_init_stdout(void) {
     struct inode *node;
-    if ((node = dev_create_inode()) == NULL) {    //创建一个inode,并完成其部分初始化
+    if ((node = dev_create_inode()) == NULL) {    /* 创建这个设备文件对应的inode,并完成其部分初始化 */
         panic("stdout: dev_create_node.\n");
     }
 
-    // vop_info()用于设置inode的__device_info成员(struct device类型), 并返回device的指针
-    stdout_device_init(vop_info(node, device));   // 初始化设备; 
-
+    /* vop_info()用于设置inode的__device_info成员(struct device类型), 并返回device的指针 */
+    stdout_device_init(vop_info(node, device));   /* 初始化设备 */
     int ret;
-    if ((ret = vfs_add_dev("stdout", node, 0)) != 0) {  // 为传入的参数创建一个vfs_dev_t,然后将其加入设备链表
+    if ((ret = vfs_add_dev("stdout", node, 0)) != 0) {  /*  为传入的参数创建一个vfs_dev_t,然后将其加入设备链表 */
         panic("stdout: vfs_add_dev: %e.\n", ret);
     }
 }

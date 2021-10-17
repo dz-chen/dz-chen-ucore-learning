@@ -112,7 +112,7 @@ switch_to函数比较重要,需要看懂其中的汇编!
 两个线程:idleproc、initporc
 
 - **语句local_intr_save(intr_flag);....local_intr_restore(intr_flag);在这里有何作用?**  
-关中断,放置当前这段重要代码被打断...
+关中断,防止当前这段重要代码被打断...
 
 # 补充:进程/线程的属性与特征
 ## 内核线程与用户进程
